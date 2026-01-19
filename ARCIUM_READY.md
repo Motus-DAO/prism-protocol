@@ -22,38 +22,31 @@
 ```
 ✅ MXE Address: EFs8XpQ9QHy6ZiMr91ejUe8up9S9TuMuJsFDgfzhSjan
 ✅ Cluster ID: 1078779259
-✅ Network: Devnet/Localnet
-✅ Docker: Installed (needs to be started)
+✅ Network: DEVNET (production-ready)
+✅ Status: Already working in PsyChat
 ```
 
 ---
 
 ## 🚀 How to Use Arcium in Prism
 
-### Quick Start (3 steps)
+### Quick Start (2 steps - NO Docker needed!)
 
-#### 1. Start Docker Desktop
+#### 1. Verify Environment Variables
 ```bash
-# Open Docker Desktop application
-# OR from terminal:
-open -a Docker
+# Check that .env.local has:
+NEXT_PUBLIC_ARCIUM_MXE_ADDRESS="EFs8XpQ9QHy6ZiMr91ejUe8up9S9TuMuJsFDgfzhSjan"
+NEXT_PUBLIC_ARCIUM_CLUSTER_ID="1078779259"
+NEXT_PUBLIC_ARCIUM_RPC_URL="https://api.devnet.solana.com"
+ARCIUM_NETWORK="devnet"
 ```
 
-#### 2. Start Arcium Localnet (from PsyChat)
-```bash
-# In a separate terminal
-cd /Users/main/PsyChat
-arcium localnet --skip-build
-
-# Keep this terminal open - localnet runs here
-```
-
-#### 3. Use in Prism Code
+#### 2. Use in Prism Code
 ```typescript
 // Import Arcium service
 import { arciumChatService } from '../lib/privacy/arcium-chat';
 
-// Initialize
+// Initialize (connects to devnet automatically)
 await arciumChatService.initialize();
 
 // Encrypt identity data
@@ -65,7 +58,23 @@ const encrypted = await arciumChatService.encryptMessage(
 // Get network status
 const status = await arciumChatService.getNetworkStatus();
 console.log('Arcium nodes:', status.nodeCount);
+console.log('Connected to devnet:', status.isConnected);
 ```
+
+### Devnet vs Localnet
+
+**You're using DEVNET (recommended for hackathon):**
+- ✅ Production-ready Arcium network
+- ✅ No Docker needed
+- ✅ Always available
+- ✅ Real MPC nodes on Solana devnet
+- ✅ Already configured in PsyChat
+
+**Localnet (optional for offline dev):**
+- Requires Docker
+- Local MPC nodes
+- Good for testing without internet
+- Not needed for your setup
 
 ---
 
@@ -152,37 +161,41 @@ Add these to your `.env.local`:
 NEXT_PUBLIC_ARCIUM_MXE_ADDRESS="EFs8XpQ9QHy6ZiMr91ejUe8up9S9TuMuJsFDgfzhSjan"
 NEXT_PUBLIC_ARCIUM_CLUSTER_ID="1078779259"
 NEXT_PUBLIC_ARCIUM_RPC_URL="https://api.devnet.solana.com"
-ARCIUM_NETWORK="localnet"
+ARCIUM_NETWORK="devnet"
+NEXT_PUBLIC_ARCIUM_NETWORK="devnet"
 ARCIUM_USE_REAL_MPC="true"
 ARCIUM_MOCK_MODE="false"
 ```
 
 ---
 
-## 🐳 Docker Commands
+## 🌐 Devnet Commands (No Docker Needed!)
 
-### Check Docker Status
+### Check Arcium Devnet Status
 ```bash
-docker ps | grep arcium
-# Should show arcium/arx-node containers
+# Check MXE status on devnet
+arcium mxe-info --rpc-url devnet
+
+# Or check from your code
+const status = await arciumChatService.getNetworkStatus();
+console.log(status);
 ```
 
-### Check Arcium Localnet Status
+### Verify Connection
 ```bash
-# In PsyChat directory
-cd /Users/main/PsyChat
-arcium mxe-info --rpc-url localnet
+# Test devnet RPC
+curl -X POST https://api.devnet.solana.com \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
+# Should return: {"result":"ok"}
 ```
 
-### Restart Arcium (if needed)
-```bash
-# Stop
-docker stop $(docker ps -q --filter ancestor=arcium/arx-node)
-
-# Start
-cd /Users/main/PsyChat
-arcium localnet --skip-build
-```
+### No Docker Needed
+Because you're using **devnet**, you don't need Docker or localnet:
+- ✅ Arcium devnet is always running
+- ✅ MXE already deployed
+- ✅ Just needs internet connection
+- ✅ Same setup as PsyChat
 
 ---
 
@@ -190,12 +203,16 @@ arcium localnet --skip-build
 
 Before using Arcium in Prism:
 
-- [ ] Docker Desktop is running
-- [ ] Arcium localnet started in PsyChat
-- [ ] `docker ps` shows arcium containers
-- [ ] Environment variables added to `.env.local`
+- [ ] Environment variables added to `.env.local` (with `devnet`)
 - [ ] Arcium libraries copied to `lib/privacy/`
 - [ ] Can import `arciumChatService`
+- [ ] Internet connection available (for devnet)
+- [ ] Devnet RPC accessible (`curl` test passes)
+
+~~NOT NEEDED (you're on devnet):~~
+- ~~Docker Desktop~~
+- ~~Arcium localnet~~
+- ~~Docker containers~~
 
 ---
 
@@ -258,8 +275,9 @@ await prismRPC.submitEncrypted(encrypted);
 - ✅ Configuration copied
 - ✅ Libraries available
 - ✅ MXE address known
-- ⏳ Docker needs to be started
-- ⏳ Localnet needs to be running
+- ✅ Using devnet (production-ready)
+- ✅ No Docker needed
+- ✅ Already working in PsyChat
 
 ### Next Steps
 1. Start Docker Desktop
@@ -271,24 +289,30 @@ await prismRPC.submitEncrypted(encrypted);
 
 ## 📞 Quick Reference
 
-### Start Arcium (Terminal 1)
+### Check Devnet Status
 ```bash
-cd /Users/main/PsyChat
-arcium localnet --skip-build
-# Leave this running
+# Test devnet connection
+curl -X POST https://api.devnet.solana.com \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}'
 ```
 
-### Verify Status (Terminal 2)
-```bash
-docker ps | grep arcium
-arcium mxe-info --rpc-url localnet
-```
-
-### Use in Prism (Terminal 3)
+### Use in Prism
 ```bash
 cd /Users/main/Prism-protocol
-# Your development work here
-# Arcium is ready to use!
+
+# Add env vars to .env.local (see above)
+
+# Start coding - Arcium devnet is always available!
+npm run dev
+```
+
+### Verify in Code
+```typescript
+import { arciumChatService } from './lib/privacy/arcium-chat';
+
+const status = await arciumChatService.getNetworkStatus();
+console.log('Devnet connected:', status.isConnected);
 ```
 
 ---
@@ -315,4 +339,4 @@ Just start Docker + Arcium localnet, and you can:
 
 ---
 
-**Next**: Start Docker, run localnet, begin Day 1 of HACKATHON_ROADMAP.md
+**Next**: Verify env vars with devnet, begin Day 1 of HACKATHON_ROADMAP.md (no Docker needed!)

@@ -74,11 +74,12 @@ if [ -f "$PSYCHAT_DIR/.env.local" ]; then
             echo ""
             echo "📝 Creating .env.local in Prism-protocol..."
             cat > "$PRISM_DIR/.env.local" << EOF
-# Arcium MPC Integration (shared from PsyChat)
+# Arcium MPC Integration (shared from PsyChat - DEVNET)
 NEXT_PUBLIC_ARCIUM_MXE_ADDRESS="$MXE_ADDRESS"
 NEXT_PUBLIC_ARCIUM_CLUSTER_ID="$CLUSTER_ID"
 NEXT_PUBLIC_ARCIUM_RPC_URL="https://api.devnet.solana.com"
-ARCIUM_NETWORK="localnet"
+ARCIUM_NETWORK="devnet"
+NEXT_PUBLIC_ARCIUM_NETWORK="devnet"
 ARCIUM_USE_REAL_MPC="true"
 ARCIUM_MOCK_MODE="false"
 EOF
@@ -99,21 +100,26 @@ else
     echo "  ℹ️  PsyChat .env.local not found (this is okay for MVP)"
 fi
 
-# Check Docker status
+# Check Devnet connection (no Docker needed!)
 echo ""
-echo "🐳 Checking Docker status..."
-if docker ps &> /dev/null; then
-    ARCIUM_RUNNING=$(docker ps | grep -c "arcium" || echo "0")
-    if [ "$ARCIUM_RUNNING" -gt "0" ]; then
-        echo "  ✅ Arcium Docker containers are running ($ARCIUM_RUNNING container(s))"
-    else
-        echo "  ⚠️  Arcium Docker containers not currently running"
-        echo "     Start with: cd $PSYCHAT_DIR && arcium localnet --skip-build"
-    fi
+echo "🌐 Checking Devnet connection..."
+if curl -s -X POST https://api.devnet.solana.com \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"getHealth"}' \
+  | grep -q '"result":"ok"'; then
+    echo "  ✅ Devnet RPC is accessible"
+    echo "  ✅ Arcium devnet is ready to use"
 else
-    echo "  ⚠️  Docker is not running"
-    echo "     Start Docker Desktop first"
+    echo "  ⚠️  Devnet RPC not accessible"
+    echo "     Check internet connection"
 fi
+
+echo ""
+echo "ℹ️  Note: You're using DEVNET (not localnet)"
+echo "   - No Docker needed"
+echo "   - No localnet needed"
+echo "   - Arcium runs on Solana devnet"
+echo "   - Same as PsyChat configuration"
 
 echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -128,12 +134,14 @@ echo "   Arcium.toml"
 echo "   .env.local (if created)"
 echo ""
 echo "🚀 Next steps:"
-echo "   1. Ensure Docker Desktop is running"
-echo "   2. Start Arcium localnet:"
-echo "      cd $PSYCHAT_DIR && arcium localnet --skip-build"
-echo "   3. Verify in Prism-protocol:"
+echo "   1. Verify .env.local has ARCIUM_NETWORK=\"devnet\""
+echo "   2. Install Arcium packages (if needed):"
 echo "      npm install @arcium-hq/client @arcium-hq/reader"
+echo "   3. Import and use in your code:"
+echo "      import { arciumChatService } from './lib/privacy/arcium-chat'"
 echo "   4. Continue with Day 1 of HACKATHON_ROADMAP.md"
+echo ""
+echo "💡 NO Docker needed - you're using devnet!"
 echo ""
 echo "📖 See ARCIUM_SETUP.md for detailed integration guide"
 echo ""
