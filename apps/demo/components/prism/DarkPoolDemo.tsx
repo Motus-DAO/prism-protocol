@@ -3,8 +3,16 @@ import { motion, AnimatePresence } from "framer-motion";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
 import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
-import { HoloPanel, HoloButton, HoloText } from "../ui";
+import { 
+  HoloPanel, 
+  HoloButton, 
+  HoloText, 
+  ToastContainer, 
+  SuccessAnimation,
+  StepSkeleton 
+} from "../ui";
 import { usePrismProgram } from "../../lib/usePrismProgram";
+import { useToast } from "../../hooks/useToast";
 import { 
   FaShieldAlt, 
   FaLock, 
@@ -15,7 +23,8 @@ import {
   FaFire,
   FaCog,
   FaChartLine,
-  FaExternalLinkAlt
+  FaExternalLinkAlt,
+  FaSpinner
 } from "react-icons/fa";
 
 type DemoStep = 'connect' | 'balance' | 'context' | 'proof' | 'access' | 'trade' | 'burn' | 'complete';
@@ -42,6 +51,7 @@ export const DarkPoolDemo: React.FC = () => {
   const { publicKey, connected, connecting } = useWallet();
   const { connection } = useConnection();
   const prism = usePrismProgram();
+  const { toasts, removeToast, success, error, info } = useToast();
   
   const [currentStep, setCurrentStep] = useState<DemoStep>('connect');
   const [isProcessing, setIsProcessing] = useState(false);
@@ -52,6 +62,8 @@ export const DarkPoolDemo: React.FC = () => {
   const [proofGenerated, setProofGenerated] = useState(false);
   const [logs, setLogs] = useState<string[]>([]);
   const [txSignatures, setTxSignatures] = useState<string[]>([]);
+  const [showSuccess, setShowSuccess] = useState(false);
+  const [isLoadingBalance, setIsLoadingBalance] = useState(false);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -67,21 +79,29 @@ export const DarkPoolDemo: React.FC = () => {
   useEffect(() => {
     if (connected && publicKey && currentStep === 'connect') {
       addLog(`Wallet connected: ${publicKey.toBase58().slice(0, 4)}...${publicKey.toBase58().slice(-4)}`);
+      success('Wallet connected successfully!');
       setCurrentStep('balance');
     }
-  }, [connected, publicKey, currentStep, addLog]);
+  }, [connected, publicKey, currentStep, addLog, success]);
 
   // Fetch real balance when wallet connects
   useEffect(() => {
     const fetchBalance = async () => {
       if (connected && publicKey) {
+        setIsLoadingBalance(true);
         try {
           const bal = await connection.getBalance(publicKey);
           setBalance(bal / LAMPORTS_PER_SOL);
           addLog(`Balance fetched: ${(bal / LAMPORTS_PER_SOL).toFixed(4)} SOL`);
-        } catch (error) {
-          addLog(`Error fetching balance: ${error}`);
+          if (bal / LAMPORTS_PER_SOL < 0.01) {
+            info('Low balance detected. Get devnet SOL from faucet.');
+          }
+        } catch (err) {
+          addLog(`Error fetching balance: ${err}`);
+          error('Failed to fetch balance. Please try again.');
           setBalance(0);
+        } finally {
+          setIsLoadingBalance(false);
         }
       }
     };
@@ -89,7 +109,7 @@ export const DarkPoolDemo: React.FC = () => {
     if (connected && currentStep === 'balance') {
       fetchBalance();
     }
-  }, [connected, publicKey, connection, currentStep, addLog]);
+  }, [connected, publicKey, connection, currentStep, addLog, info, error]);
 
   // Check for existing root identity
   useEffect(() => {
@@ -140,6 +160,7 @@ export const DarkPoolDemo: React.FC = () => {
         case 'context':
           addLog('Creating disposable context identity...');
           addLog('Sending transaction to Solana devnet...');
+          info('Creating context on Solana devnet...');
           
           // Real on-chain transaction!
           const contextResult = await prism.createContext(
@@ -162,22 +183,32 @@ export const DarkPoolDemo: React.FC = () => {
             addLog('✓ Context created ON-CHAIN!');
             addLog('View on Solana Explorer ↗');
             
+            // Show success animation and toast
+            setShowSuccess(true);
+            success('Context created on-chain!');
+            setTimeout(() => setShowSuccess(false), 2000);
+            
             setCurrentStep('proof');
           } else {
-            addLog(`ERROR: ${prism.error || 'Failed to create context'}`);
+            const errorMsg = prism.error || 'Failed to create context';
+            addLog(`ERROR: ${errorMsg}`);
+            error(errorMsg);
             if (prism.error?.includes('insufficient')) {
               addLog('Need devnet SOL: https://faucet.solana.com');
+              error('Insufficient SOL. Get devnet SOL from faucet.solana.com');
             }
           }
           break;
           
         case 'proof':
           addLog('Initializing Arcium MPC encryption...');
+          info('Encrypting balance with Arcium MPC...');
           await new Promise(r => setTimeout(r, 600));
           addLog('✓ Balance encrypted with MPC');
           
           addLog('Generating ZK solvency proof...');
           addLog('  Private input: balance = [ENCRYPTED]');
+          info('Generating ZK proof with Noir...');
           
           const threshold = balance ? Math.max(balance * 0.1, 0.01) : 0.01;
           addLog(`  Public input: threshold = ${threshold.toFixed(4)} SOL`);
@@ -190,12 +221,14 @@ export const DarkPoolDemo: React.FC = () => {
           setProofGenerated(true);
           addLog('✓ ZK Proof generated successfully');
           addLog(`  Proof size: 1.2 KB`);
+          success('ZK proof generated!');
           
           setCurrentStep('access');
           break;
           
         case 'access':
           addLog('Submitting proof to dark pool verifier...');
+          info('Verifying proof...');
           await new Promise(r => setTimeout(r, 600));
           addLog('Verifying ZK proof...');
           await new Promise(r => setTimeout(r, 400));
@@ -207,6 +240,7 @@ export const DarkPoolDemo: React.FC = () => {
           addLog('═══════════════════════════════════════');
           addLog('');
           addLog('Your main wallet is NEVER exposed!');
+          success('Dark pool access granted!');
           
           setCurrentStep('trade');
           break;
@@ -214,6 +248,7 @@ export const DarkPoolDemo: React.FC = () => {
         case 'trade':
           addLog('Executing anonymous swap via context...');
           addLog(`  Context: ${contextAddress?.slice(0, 8)}...`);
+          info('Executing trade...');
           
           const tradeAmount = balance ? Math.min(balance * 0.02, 0.1) : 0.01;
           addLog(`  Selling: ${tradeAmount.toFixed(4)} SOL`);
@@ -227,6 +262,7 @@ export const DarkPoolDemo: React.FC = () => {
           addLog('  ✓ Main wallet: NOT in transaction');
           addLog('  ✓ Balance: NOT revealed');
           addLog('  ✓ Identity: Context only');
+          success('Trade executed successfully!');
           
           setCurrentStep('burn');
           break;
@@ -235,6 +271,7 @@ export const DarkPoolDemo: React.FC = () => {
           addLog('Burning disposable context...');
           addLog(`  Revoking: ${contextAddress?.slice(0, 8)}...`);
           addLog('Sending revoke transaction...');
+          info('Revoking context on-chain...');
           
           if (contextIndex !== null) {
             // Real on-chain transaction!
@@ -251,14 +288,22 @@ export const DarkPoolDemo: React.FC = () => {
               addLog('No one can link this trade to your wallet');
               addLog(`Total transactions: ${txSignatures.length + 1}`);
               
+              // Show success animation and toast
+              setShowSuccess(true);
+              success('Context burned! Privacy preserved!');
+              setTimeout(() => setShowSuccess(false), 2000);
+              
               setCurrentStep('complete');
             } else {
-              addLog(`ERROR: ${prism.error || 'Failed to revoke context'}`);
+              const errorMsg = prism.error || 'Failed to revoke context';
+              addLog(`ERROR: ${errorMsg}`);
+              error(errorMsg);
               // Still advance for demo purposes
               setCurrentStep('complete');
             }
           } else {
             addLog('Context already revoked or not found');
+            error('Context not found');
             setCurrentStep('complete');
           }
           break;
@@ -285,10 +330,19 @@ export const DarkPoolDemo: React.FC = () => {
   };
 
   const getButtonText = () => {
-    if (isProcessing || prism.isLoading) return 'Processing...';
+    if (isProcessing || prism.isLoading) {
+      return (
+        <span className="flex items-center justify-center gap-2">
+          <FaSpinner className="animate-spin" />
+          {currentStep === 'context' ? 'Creating on-chain...' :
+           currentStep === 'burn' ? 'Burning on-chain...' :
+           'Processing...'}
+        </span>
+      );
+    }
     switch (currentStep) {
       case 'connect': return 'Connect Wallet';
-      case 'balance': return 'Continue';
+      case 'balance': return isLoadingBalance ? 'Loading balance...' : 'Continue';
       case 'context': return 'Create Context (On-Chain)';
       case 'proof': return 'Generate ZK Proof';
       case 'access': return 'Enter Dark Pool';
@@ -314,24 +368,32 @@ export const DarkPoolDemo: React.FC = () => {
       <motion.div 
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
-        className="text-center mb-8 md:mb-12"
+        className="text-center mb-6 md:mb-12"
       >
-        <HoloText variant="gradient" size="3xl" weight="bold" as="h1" className="mb-2 md:text-4xl">
+        <HoloText variant="gradient" size="3xl" weight="bold" as="h1" className="mb-2 text-2xl sm:text-3xl md:text-4xl">
           PRISM PROTOCOL
         </HoloText>
-        <HoloText variant="heading" size="lg" color="muted">
+        <HoloText variant="heading" size="lg" color="muted" className="text-base md:text-lg">
           Dark Pool Trading Demo
         </HoloText>
         {connected && publicKey && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="mt-2 flex items-center justify-center gap-2"
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            className="mt-3 flex flex-col sm:flex-row items-center justify-center gap-2"
           >
-            <HoloText size="sm" color="cyan">
-              {publicKey.toBase58().slice(0, 4)}...{publicKey.toBase58().slice(-4)}
-            </HoloText>
-            <span className="text-green-400 text-xs">● Devnet</span>
+            <motion.div 
+              className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-400/30 rounded-full"
+              whileHover={{ scale: 1.05 }}
+            >
+              <span className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
+              <HoloText size="sm" color="cyan" className="font-mono">
+                {publicKey.toBase58().slice(0, 4)}...{publicKey.toBase58().slice(-4)}
+              </HoloText>
+            </motion.div>
+            <span className="px-2 py-1 bg-green-500/10 border border-green-400/30 rounded-full text-green-400 text-xs font-semibold">
+              Devnet
+            </span>
           </motion.div>
         )}
       </motion.div>
@@ -366,6 +428,9 @@ export const DarkPoolDemo: React.FC = () => {
                       isComplete ? 'bg-green-500/10 border border-green-400/20' :
                       'bg-white/5 border border-white/10'
                     }`}
+                    style={{
+                      animation: isActive && isProcessing ? 'processing-pulse 2s infinite' : undefined
+                    }}
                   >
                     <div className={`text-lg md:text-xl ${
                       isActive ? 'text-cyan-400' :
@@ -461,9 +526,20 @@ export const DarkPoolDemo: React.FC = () => {
                   <HoloText size="xs" color="muted">TXs</HoloText>
                 </div>
                 <div className="text-center">
-                  <HoloText variant="mono" size="xl" color="white" glow className="md:text-2xl">
-                    {balance !== null ? formatBalance(balance) : '--'}
-                  </HoloText>
+                  {isLoadingBalance ? (
+                    <motion.div
+                      animate={{ opacity: [0.5, 1, 0.5] }}
+                      transition={{ duration: 1.5, repeat: Infinity }}
+                    >
+                      <HoloText variant="mono" size="xl" color="cyan" glow className="md:text-2xl">
+                        ...
+                      </HoloText>
+                    </motion.div>
+                  ) : (
+                    <HoloText variant="mono" size="xl" color="white" glow className="md:text-2xl">
+                      {balance !== null ? formatBalance(balance) : '--'}
+                    </HoloText>
+                  )}
                   <HoloText size="xs" color="muted">SOL</HoloText>
                 </div>
               </div>
@@ -623,6 +699,12 @@ export const DarkPoolDemo: React.FC = () => {
           </div>
         </HoloPanel>
       </motion.div>
+
+      {/* Toast Notifications */}
+      <ToastContainer toasts={toasts} onRemove={removeToast} />
+
+      {/* Success Animation */}
+      <SuccessAnimation show={showSuccess} />
     </div>
   );
 };
