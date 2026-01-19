@@ -1,0 +1,90 @@
+# Prism Protocol - Git Ignore
+
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Testing
+coverage/
+.nyc_output
+
+# Production
+build/
+dist/
+target/
+*.so
+*.dylib
+
+# Misc
+.DS_Store
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Anchor
+.anchor/
+test-ledger/
+.DS_Store
+target/
+**/*.rs.bk
+node_modules/
+test-ledger/
+
+# Solana
+.config/
+
+# Circom
+*.r1cs
+*.wasm
+*.sym
+*.zkey
+*.wtns
+pot*.ptau
+
+# Next.js
+.next/
+out/
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+# OS
+Thumbs.db
+
+# Keys (IMPORTANT - never commit these!)
+*-keypair.json
+*.key
+*.pem
+id.json
+
+# Environment
+.env
+.env.*
+!.env.example
