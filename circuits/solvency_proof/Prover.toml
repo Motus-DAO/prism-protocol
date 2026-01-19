@@ -1,0 +1,11 @@
+# Prism Protocol - Solvency Proof Inputs
+# This file contains the inputs for generating a proof
+
+# Private input: User's actual balance (hidden from verifier)
+# Example: User has 500,000 SOL (in lamports: 500,000,000,000,000)
+# For simplicity, we use smaller numbers here (500,000 units)
+actual_balance = 500000
+
+# Public input: The threshold to prove
+# Example: Must have at least 10,000 SOL
+threshold = 10000

@@ -1,0 +1,11 @@
+[workspace]
+members = ["programs/*"]
+resolver = "2"
+
+[workspace.dependencies]
+anchor-lang = "0.31.1"
+# Pin blake3 to avoid edition2024 (Solana CLI bundles old Cargo)
+blake3 = "=1.5.4"
+
+[profile.release]
+overflow-checks = true

@@ -1,0 +1,6 @@
+[package]
+name = "solvency_proof"
+type = "bin"
+authors = [""]
+
+[dependencies]

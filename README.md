@@ -1,317 +1,262 @@
 # Prism Protocol
-*Context-Aware Privacy Infrastructure for Solana*
+**Privacy Infrastructure for Dark Pool Trading on Solana**
 
-## 🎯 Vision
+> 🚀 **Hackathon MVP:** Anonymous dark pool trading with ZK solvency proofs  
+> 📅 **Status:** In active development (Jan 20-26, 2026)  
+> 🎯 **Target:** Privacy Tooling + Aztec/Noir + Arcium + Range bounties ($32K)
 
-Prism Protocol is privacy infrastructure that solves Web3's three biggest problems:
-1. **Wallet draining epidemic** - Disposable contexts protect main wallets
-2. **Privacy leaks from wallet linking** - Context-based identities with ZK proofs
-3. **Cross-chain identity fragmentation** - Universal names that work everywhere
+## 🎯 The Problem
 
-## 🚨 The Problem
+**Dark pool traders face an impossible choice:**
+- Prove you're solvent to access the pool → Reveal holdings → Get front-run
+- Hide your holdings → Can't prove solvency → Locked out
 
-### Current State of Solana Identity
-- **SAS (Solana Attestation Service)**: Credentials tied to wallets
-- **Solana ID / SOLID**: Aggregates multiple wallets but **deanonymizes users**
-- **zkMe**: ZK-based KYC but rigid disclosure
-- **Cryptid**: DID-aware wallet with middleware
-- **Squads/Fuse**: Account abstraction, multi-sig
+**A $500K whale can't prove they meet a $10K minimum without exposing their entire position.**
 
-### Critical Gaps We Solve
-1. ❌ **Wallet linking creates privacy leaks** - Solana ID aggregates wallets, exposing users
-2. ❌ **No context-dependent identity** - Can't have different personas for different uses
-3. ❌ **Timing attacks via RPC** - 95%+ success rate deanonymizing wallets
-4. ❌ **No composable privacy modules** - Devs can't easily add privacy
-5. ❌ **Cross-chain attestations leak metadata** - Bridging reveals information
-6. ❌ **All-or-nothing credential disclosure** - Can't selectively reveal identity
-7. ❌ **Wallet draining epidemic** - One compromised signature = everything lost
+## 💡 The Solution
 
-## 💡 The Solution: Prism Protocol
+**Prism Protocol: Privacy infrastructure that enables anonymous dark pool participation**
 
-### Core Concept
-A **modular privacy layer** between wallets and applications that lets users create **privacy-preserving personas** (contexts) for different use cases, while maintaining cryptographic links to a root identity.
+1. **Create disposable context** - Fresh wallet address
+2. **Generate ZK proof** - "Balance > $10K" (hides actual $500K)
+3. **Access dark pool** - Verified solvency without exposure
+4. **Execute trade** - Complete privacy
+5. **Burn context** - No trace to main wallet
 
-Think: **Signal's sealed sender** + **Tor** + **VPN with identity proofs**
+**Result:** Whale status hidden, front-running prevented, privacy preserved.
 
-### Key Innovations
+## 🔑 Key Innovations (MVP Scope)
 
-#### 1. Contextual Identity Containers (CICs)
+### 1. Context-Based Identities
 ```
-Root Identity (Soulbound, Hidden)
-├── DeFi Context (Pseudonymous)
-├── Social Context (Pseudonymous)
-├── Gaming Context (Anonymous)
-├── Professional Context (Selective Disclosure)
-└── Flex Context (Fully Public - Show off!)
+Root Identity (Hidden)
+└── Dark Pool Context (Disposable)
+    ├── Fresh wallet address
+    ├── Spending limits enforced
+    └── Burns after use
 ```
 
-Users create multiple contexts for different activities. Each context has:
-- Separate wallet address
-- Independent privacy settings
-- Cryptographic link to root (provable via ZK)
-- Configurable disclosure rules
+**Why it matters:** Main wallet never exposed to dark pool operators or other traders.
 
-#### 2. Adaptive Privacy Circuits
-Dynamic ZK proof generation based on trust relationships:
-- **Range proofs**: "Age 25-35" not exact age
-- **Threshold proofs**: "Balance >$1000" not exact amount
-- **Set membership**: "EU citizen" not exact country
-- **Reputation proofs**: "50+ completed jobs" without revealing clients
-
-#### 3. Cross-Chain Universal Names (PNS)
-```
-gerry.prism (Universal Identity)
-├── Solana: 9Km2...8pQ4 (DeFi context)
-├── Ethereum: 0x4Lp7...6rW1 (DeFi context)
-├── Polygon: 0x7Bx9...3kL2 (Social context)
-└── Linked: gerry.sol, gerry.eth (provably same person)
+### 2. Noir ZK Solvency Proofs
+```rust
+// Prove balance threshold without revealing amount
+fn verify_solvency(
+    actual_balance: Field,    // Private: $500K
+    threshold: pub Field       // Public: $10K
+) -> pub bool {
+    actual_balance >= threshold
+}
 ```
 
-One name works across all chains, resolves to different wallets per context.
+**Why it matters:** Selective disclosure - prove what's needed, hide what's not.
 
-#### 4. Anti-Drain Protection
-**Disposable contexts for unknown sites:**
-- Auto-create temporary context for new/untrusted sites
-- Spending limits per context (max 0.5 SOL)
-- Transaction simulation before signing
-- Auto-revocation on suspicious activity
-- **Result**: Phishing only drains disposable context, main wallet safe!
-
-#### 5. Privacy-Preserving Cross-Chain State Channels
-Zero-knowledge state channels for cross-chain attestations:
-- Identity stays on Solana (source of truth)
-- ZK proofs travel via Wormhole
-- Other chains verify without seeing identity data
-- Recursive SNARKs for "proof of proof"
-
-#### 6. Anti-Fingerprinting Network Layer
-**Solves the 95% RPC timing attack:**
-- Request batching with decoy queries
-- Timing jitter (random delays)
-- Onion routing through multiple RPCs
-- Query splitting across providers
-
-## 🎯 Killer Use Cases
-
-### 1. Anonymous DeFi with Sybil Protection
-- Use fresh wallet for airdrop
-- Prove "I have 1+ year history" via ZK
-- Claim airdrop without revealing main wallet
-- **Result**: No sybil flag, full privacy
-
-### 2. Private Professional Reputation
-- Prove "50+ completed freelance jobs"
-- Client never sees which projects or earnings
-- Build trust without doxxing portfolio
-- **Result**: Get hired, keep privacy
-
-### 3. Cross-Chain Identity Without Bridging
-- Use Solana reputation on Ethereum
-- Generate ZK attestation via Wormhole
-- Ethereum verifies without seeing Solana wallet
-- **Result**: Instant trust on new chain, no assets moved
-
-### 4. Private Voting with Eligibility
-- Vote anonymously in DAO
-- Prove "I hold 1000+ governance tokens"
-- Actual holdings (50,000) never revealed
-- **Result**: Anonymous voting, verified eligibility
-
-### 5. Wallet Draining Protection
-- Connect to unknown NFT mint site
-- Prism creates disposable context (0.1 SOL limit)
-- Site tries malicious drain
-- **Result**: Only disposable context lost, main wallet safe!
-
-### 6. Private Name Service
-- Register alice.prism (one name, all chains)
-- Resolves to DeFi wallet in trading apps
-- Resolves to Social wallet in communities
-- Resolves to Public wallet when flexing
-- **Result**: One identity, multiple personas
-
-## 🏗️ Technical Architecture
-
-### Layer 1: On-Chain (Solana)
-- **Language**: Rust (Anchor Framework)
-- **Contracts**: Root identity + context derivation
-- **Storage**: Compressed NFTs for credentials
-- **Privacy**: Arcium MPC for encryption
-
-### Layer 2: ZK Proofs
-- **Framework**: Light Protocol
-- **Circuits**: Circom/Groth16
-- **Features**: Selective disclosure, adaptive proofs
-- **Optimization**: Recursive SNARKs
-
-### Layer 3: Cross-Chain
-- **Bridge**: Wormhole (messaging only)
-- **Privacy**: Encrypted state channels
-- **Verification**: On-chain verifier contracts (EVM)
-- **Standards**: W3C DID + Self Protocol MDIP
-
-### Layer 4: Network Privacy
-- **RPC Proxy**: Custom anti-timing implementation
-- **Features**: Timing jitter, request batching, onion routing
-- **Decoy Generation**: Automated fake queries
-
-### Layer 5: Developer SDK
-- **Language**: TypeScript
-- **Framework**: React hooks + vanilla JS
-- **Distribution**: npm @prism-protocol/sdk
-- **Integration**: 5 lines of code
-
-### Layer 6: User Interface
-- **User Dashboard**: Context management, privacy scoring
-- **Developer Console**: Integration hub, analytics
-- **Components**: Pre-built Prism widgets
-
-## 🎨 User Experience
-
-### Three Levels of Interaction
-
-#### Level 1: Invisible (90% of users)
-Like RPCs - users don't know it's there:
+### 3. Arcium MPC Encryption
 ```typescript
-<PrismConnect>
-  <button>Sign In</button>
-</PrismConnect>
-// User clicks, Prism handles everything behind scenes
-```
-
-#### Level 2: Aware (9% - Power Users)
-Like MetaMask - users manage settings:
-- Create contexts for different use cases
-- Set privacy levels per context
-- Monitor what's been shared
-- Revoke app access
-
-#### Level 3: Builder (1% - Developers)
-Like OAuth - integrate into apps:
-```typescript
-const proof = await prism.requestProof({
-  type: 'age_verification',
-  minAge: 21
+// Encrypt balance before proving
+const encrypted = await arcium.encrypt({
+  balance: wallet.balance,
+  context: contextPubkey
 });
+
+// Proof uses encrypted value
+const proof = await noir.prove(encrypted, threshold);
 ```
 
-## 🏆 Why This Wins
+**Why it matters:** End-to-end encryption ensures even proof generation is private.
 
-### Track 02: Privacy Tooling ($15,000)
-- ✅ **Solves Real Problems**: 6 critical gaps in Solana identity
-- ✅ **Technical Innovation**: First adaptive ZK proofs, anti-timing RPC, context identities
-- ✅ **Developer Infrastructure**: SDK with composable modules, 5-line integration
-- ✅ **Privacy Advancement**: Arcium + Light Protocol, measurable privacy scoring
+## 🎯 Primary Use Case: Dark Pool Trading
 
-### Track 03: Open Track ($18,000)
-- ✅ **Complete Application**: With MotusDAO mental health use case
-- ✅ **Novel Architecture**: Privacy-preserving therapy marketplace
-- ✅ **Real-world Impact**: Stigma-free mental health care
+### The Demo Flow
+1. **Connect wallet** - Show balance ($500K SOL)
+2. **Create context** - Generate disposable identity
+3. **Generate proof** - Noir ZK circuit proves balance > $10K
+4. **Access pool** - Dark pool verifies proof on-chain
+5. **Execute trade** - Complete transaction privately
+6. **Burn context** - Disposable wallet destroyed
+7. **Result** - Main wallet never exposed ✅
 
-### Bonus Points
-- 🔒 **Security Innovation**: First anti-drain wallet architecture
-- 🌐 **Cross-Chain**: Universal names that preserve privacy
-- 🎯 **UX Breakthrough**: Flex mode + invisible mode + power mode
-- 📦 **Composability**: Works with existing Solana ecosystem
+### Beyond Dark Pools (Future Applications)
+Our infrastructure also enables:
+- **Anonymous governance** - Vote without revealing holdings
+- **Professional reputation** - Prove experience without doxxing clients
+- **Healthcare privacy** - Therapy data marketplace without identity exposure
+- **Wallet drain protection** - Disposable contexts for unknown sites
+- **Cross-chain attestations** - Use reputation across chains
 
-## 🚀 Hackathon MVP (7 Days)
+*See `/ideation/` folder for complete use case documentation*
 
-### Week 1 Deliverables
-- ✅ Root identity + context derivation (Solana program)
-- ✅ 2 privacy levels (Anonymous, Pseudonymous)
-- ✅ 2 ZK proofs (age threshold, balance solvency)
-- ✅ Anti-timing RPC proxy (basic jitter + batching)
-- ✅ Developer SDK (3 composable modules)
-- ✅ User dashboard (context management)
-- ✅ 3 demo apps (DeFi, voting, cross-chain)
+## 🏗️ Technical Stack (MVP)
 
-### Success Metrics
-- Generate ZK proof in <2 seconds
-- Privacy score calculation working
-- Anti-drain catches malicious transactions
-- Cross-chain attestation verified on testnet
+### Smart Contracts (Solana/Anchor)
+```rust
+// Two core contracts:
+1. Root Identity - Soulbound master identity
+2. Context Manager - Create/revoke contexts with limits
+```
 
-## 💰 Market Opportunity
+### ZK Proofs (Noir)
+```rust
+// One production circuit:
+solvency_proof.nr - Balance threshold verification
+```
 
-### Target Users
-- **Privacy-conscious traders**: Don't want portfolio watched
-- **DAO participants**: Vote anonymously
-- **Professional freelancers**: Prove reputation without doxxing
-- **Cross-chain users**: One identity everywhere
-- **Security-focused users**: Protect from wallet draining
+### Encryption (Arcium)
+```typescript
+// MPC encryption for sensitive data:
+- Balance amounts
+- Context metadata
+```
 
-### Addressable Market
-- 2.8M+ active Solana wallets
-- $1B+ lost to wallet draining in 2025
-- 100K+ DAOs needing anonymous voting
-- Every dApp needs privacy-preserving identity
+### SDK (@prism-protocol/sdk)
+```typescript
+// Developer interface:
+class PrismProtocol {
+  createRootIdentity()
+  createContext(type, limits)
+  generateSolvencyProof(threshold)
+  revokeContext(pubkey)
+}
+```
 
-## 🛠️ Getting Started
+### Demo Application
+```
+Dark Pool Trading Simulator
+- Built with Next.js + React
+- Solana wallet integration
+- Real-time proof generation
+- Context lifecycle visualization
+```
 
-### For Developers
+## 🛠️ For Developers
+
+### 5-Line Integration
+```typescript
+import { PrismProtocol } from '@prism-protocol/sdk';
+
+const prism = new PrismProtocol({ wallet });
+const context = await prism.createContext('darkpool');
+const proof = await prism.generateSolvencyProof(10000);
+const verified = await darkPool.verifyProof(proof);
+```
+
+### Why Developers Choose Prism
+- ✅ **Simple API** - Intuitive, well-documented
+- ✅ **Production ready** - Deployed on devnet
+- ✅ **Open source** - MIT license
+- ✅ **Composable** - Works with existing Solana apps
+
+## 🏆 Hackathon Strategy
+
+### Target Bounties (Total: $32K)
+
+| Bounty | Prize | Our Angle |
+|--------|-------|-----------|
+| **Privacy Tooling Track** | $15,000 | SDK for privacy-preserving dark pools |
+| **Aztec/Noir** | $7,500 | First Noir-based identity SDK |
+| **Arcium** | $8,000 | End-to-end private DeFi with MPC |
+| **Range** | $1,500 | Selective disclosure proofs |
+
+### Why We Win
+- ✅ **Actually works** - Fully functional, not vaporware
+- ✅ **Novel architecture** - Context-based identities (never seen before)
+- ✅ **Technical depth** - Noir + Arcium + Solana smart contracts
+- ✅ **Real problem** - Whale front-running costs millions in MEV
+- ✅ **One demo, four bounties** - Maximum ROI on time invested
+
+## 🚀 7-Day Build Timeline
+
+| Day | Focus | Deliverable |
+|-----|-------|-------------|
+| **Day 1** | Smart contracts | Deployed to devnet |
+| **Day 2** | Noir circuits | Working solvency proofs |
+| **Day 3** | SDK core | TypeScript SDK functional |
+| **Day 4** | Arcium integration | Encrypted balance proofs |
+| **Day 5** | Demo app | Dark pool simulator |
+| **Day 6** | Polish & docs | Submission-ready |
+| **Day 7** | Video & submit | Submitted to all bounties |
+
+**See [WINNING_STRATEGY.md](./WINNING_STRATEGY.md) for detailed execution plan.**
+
+## 🔧 Development Setup
+
 ```bash
-npm install @prism-protocol/sdk
+# Clone repository
+git clone https://github.com/yourusername/prism-protocol
+cd prism-protocol
 
-# Integrate privacy in 5 lines
-import { PrismVerifier } from '@prism-protocol/sdk';
-const prism = new PrismVerifier();
-const proof = await prism.requestProof({ type: 'age_verification', minAge: 21 });
+# Install dependencies
+npm install
+
+# Build Solana programs
+cd prism
+anchor build
+anchor test
+
+# Install Noir
+curl -L https://noir-lang.org/install | bash
+noirup
+
+# Run demo
+npm run dev
 ```
 
-### For Users
-1. Install Prism wallet extension
-2. Create root identity (one-time)
-3. Generate contexts for different uses
-4. Connect to apps with privacy
+## 🎥 Demo
+
+**Coming soon:** Live demo and 3-minute video (Feb 1, 2026)
 
 ## 📚 Documentation
 
-- [Architecture](./ARCHITECTURE.md) - Technical deep dive
-- [Product Requirements](./PRD.md) - MVP features & specs
-- [Use Cases](./USE_CASES.md) - Detailed scenarios
-- [Security Model](./SECURITY_MODEL.md) - Anti-drain protection
-- [Cross-Chain PNS](./CROSS_CHAIN_PNS.md) - Name service design
-- [Hackathon Roadmap](./HACKATHON_ROADMAP.md) - 7-day plan
-- [Demo Script](./DEMO_SCRIPT.md) - 3-minute pitch
+### For Hackathon Execution
+- **[WINNING_STRATEGY.md](./WINNING_STRATEGY.md)** ⭐ - **START HERE** - Focused MVP plan
+- [Anchor Smart Contracts](./prism/) - Solana program source
+- SDK Documentation - Coming after Day 3
 
-## 🤝 MotusDAO Integration
+### Full Vision & Research
+- [/ideation/](./ideation/) - Complete product vision, use cases, and research
+  - PRD.md - Full feature specifications
+  - ARCHITECTURE.md - Complete technical architecture
+  - USE_CASES.md - All potential applications
+  - And more...
 
-Prism is perfect for mental health applications:
-- **Therapy Context**: Ultra-private, encrypted sessions
-- **Research Context**: Sell anonymized insights without revealing identity
-- **Insurance Context**: Prove eligibility without exposing diagnosis
-- **Provider Context**: Verify credentials without revealing patient list
+*Note: Focus on WINNING_STRATEGY.md during hackathon. Ideation docs are for reference and post-hackathon development.*
 
-**Result**: First stigma-free mental health platform on Solana
+## 🎯 Project Philosophy
 
-## 🎯 Vision
+**"One feature, fully working, maximum prizes."**
 
-**Make privacy the default, not an afterthought.**
+We're building ONE killer demo that:
+- Actually works (deployed and functional)
+- Solves a real problem (whale front-running)
+- Demonstrates technical mastery (Noir + Arcium + Solana)
+- Targets multiple bounties ($32K potential)
 
-Users should be able to:
-- Prove facts without revealing data
-- Build reputation without losing privacy
-- Flex when they want, hide when they need
-- Stay safe from wallet draining
-- Use one identity across all chains
+Not building:
+- ❌ 8 half-finished features
+- ❌ Vaporware architecture diagrams
+- ❌ Concept demos without real code
 
-**Prism makes this possible.**
-
----
-
-## 🔗 Links
-
-- **GitHub**: [github.com/prism-protocol](https://github.com/prism-protocol)
-- **Docs**: [docs.prism-protocol.xyz](https://docs.prism-protocol.xyz)
-- **Demo**: [demo.prism-protocol.xyz](https://demo.prism-protocol.xyz)
-- **Discord**: [discord.gg/prism](https://discord.gg/prism)
+We've learned: **Judges reward what works, not what's promised.**
 
 ## 📄 License
 
-MIT License - Open source for the ecosystem
+MIT License - Open source for the Solana ecosystem
 
 ---
 
-**Built with ❤️ for the cypherpunk future of Web3**
+**Built for Solana Privacy Hackathon 2026**  
+*Privacy infrastructure that actually works*
 
-*Prism Protocol - Prove yourself without revealing yourself*
+---
+
+## 🙏 Acknowledgments
+
+Built with:
+- [Aztec Noir](https://noir-lang.org) - ZK circuit language
+- [Arcium](https://arcium.com) - MPC encryption
+- [Anchor](https://www.anchor-lang.com) - Solana framework
+- [Solana](https://solana.com) - High-performance blockchain
+
+---
+
+**Questions?** Open an issue or check the ideation docs.

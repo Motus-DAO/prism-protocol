@@ -1,0 +1,22 @@
+[package]
+name = "prism"
+version = "0.1.0"
+description = "Prism Protocol - Privacy Infrastructure for Solana"
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib", "lib"]
+name = "prism"
+
+[features]
+no-entrypoint = []
+no-idl = []
+no-log-ix-name = []
+cpi = ["no-entrypoint"]
+default = []
+idl-build = ["anchor-lang/idl-build"]
+
+[dependencies]
+anchor-lang.workspace = true
+# Force older blake3 to avoid edition2024 requirement
+blake3.workspace = true
