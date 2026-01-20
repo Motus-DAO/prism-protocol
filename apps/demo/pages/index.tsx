@@ -1,6 +1,19 @@
 import { motion } from 'framer-motion';
 import Head from 'next/head';
-import { DarkPoolDemo } from '../components/prism/DarkPoolDemo';
+import dynamic from 'next/dynamic';
+
+// Load DarkPoolDemo only on client-side to avoid WASM/SSR issues
+const DarkPoolDemo = dynamic(
+  () => import('../components/prism/DarkPoolDemo').then(mod => ({ default: mod.DarkPoolDemo })),
+  { 
+    ssr: false,  // Don't render on server - WASM only works in browser
+    loading: () => (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-cyan-400 font-mono">Loading Prism Protocol...</div>
+      </div>
+    )
+  }
+);
 
 export default function Home() {
   return (

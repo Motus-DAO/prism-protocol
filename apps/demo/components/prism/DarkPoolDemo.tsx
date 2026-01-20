@@ -1,8 +1,14 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import dynamic from "next/dynamic";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
-import { WalletMultiButton } from "@solana/wallet-adapter-react-ui";
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js";
+
+// Dynamically import WalletMultiButton to avoid SSR hydration issues
+const WalletMultiButton = dynamic(
+  async () => (await import("@solana/wallet-adapter-react-ui")).WalletMultiButton,
+  { ssr: false }
+);
 import { 
   HoloPanel, 
   HoloButton, 
@@ -13,6 +19,7 @@ import {
 } from "../ui";
 import { usePrismProgram } from "../../lib/usePrismProgram";
 import { useToast } from "../../hooks/useToast";
+import { PrismProtocol, ContextType } from "@prism-protocol/sdk";
 import { 
   FaShieldAlt, 
   FaLock, 
@@ -48,7 +55,8 @@ const steps: StepInfo[] = [
 ];
 
 export const DarkPoolDemo: React.FC = () => {
-  const { publicKey, connected, connecting } = useWallet();
+  const wallet = useWallet();
+  const { publicKey, connected, connecting } = wallet;
   const { connection } = useConnection();
   const prism = usePrismProgram();
   const { toasts, removeToast, success, error, info } = useToast();
@@ -64,6 +72,7 @@ export const DarkPoolDemo: React.FC = () => {
   const [txSignatures, setTxSignatures] = useState<string[]>([]);
   const [showSuccess, setShowSuccess] = useState(false);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
+  const [prismProtocol, setPrismProtocol] = useState<PrismProtocol | null>(null);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -74,6 +83,41 @@ export const DarkPoolDemo: React.FC = () => {
     setTxSignatures(prev => [...prev, signature]);
     addLog(`✓ TX: ${signature.slice(0, 8)}...${signature.slice(-4)} (${description})`);
   }, [addLog]);
+
+  // Initialize PrismProtocol when wallet connects
+  useEffect(() => {
+    if (connected && publicKey && wallet && !prismProtocol) {
+      // Create wallet adapter compatible with PrismProtocol
+      const protocolWallet = {
+        publicKey,
+        signTransaction: wallet.signTransaction?.bind(wallet) || (async (tx: any) => {
+          throw new Error('Wallet signTransaction not available');
+        }),
+        signAllTransactions: wallet.signAllTransactions?.bind(wallet) || (async (txs: any[]) => {
+          throw new Error('Wallet signAllTransactions not available');
+        })
+      };
+      
+      const protocol = new PrismProtocol({
+        rpcUrl: connection.rpcEndpoint,
+        wallet: protocolWallet as any
+      });
+      
+      protocol.initialize().then(() => {
+        setPrismProtocol(protocol);
+        addLog('PrismProtocol SDK initialized');
+        const status = protocol.getArciumStatus();
+        addLog(`  Arcium mode: ${status.mode}`);
+        addLog(`  Network: ${status.network}`);
+        if (status.mxeAddress) {
+          addLog(`  MXE: ${status.mxeAddress.slice(0, 8)}...`);
+        }
+      }).catch((err) => {
+        console.error('Failed to initialize PrismProtocol:', err);
+        addLog(`WARNING: PrismProtocol init failed: ${err.message}`);
+      });
+    }
+  }, [connected, publicKey, connection, wallet, prismProtocol, addLog]);
 
   // Auto-advance when wallet connects
   useEffect(() => {
@@ -158,6 +202,34 @@ export const DarkPoolDemo: React.FC = () => {
           break;
           
         case 'context':
+          // Check if we already have a context from a previous run
+          if (contextAddress && contextIndex !== null) {
+            addLog('⚠ Using existing context from previous run');
+            addLog(`  Context: ${contextAddress.slice(0, 8)}...`);
+            addLog('  Note: If this context was already revoked, you may need to create a new one');
+            
+            // Check if context is already revoked
+            try {
+              const contextPDA = new PublicKey(contextAddress);
+              const contextAccount = await prism.fetchContextIdentity(contextPDA);
+              if (contextAccount?.revoked) {
+                addLog('⚠ This context was already revoked in a previous run');
+                addLog('Creating a new context...');
+                // Reset context state to force creation of new one
+                setContextAddress(null);
+                setContextIndex(null);
+              } else {
+                addLog('✓ Context is still active, proceeding...');
+                setCurrentStep('proof');
+                break;
+              }
+            } catch (err) {
+              addLog('Could not verify context state, creating new one...');
+              setContextAddress(null);
+              setContextIndex(null);
+            }
+          }
+          
           addLog('Creating disposable context identity...');
           addLog('Sending transaction to Solana devnet...');
           info('Creating context on Solana devnet...');
@@ -201,29 +273,85 @@ export const DarkPoolDemo: React.FC = () => {
           break;
           
         case 'proof':
-          addLog('Initializing Arcium MPC encryption...');
-          info('Encrypting balance with Arcium MPC...');
-          await new Promise(r => setTimeout(r, 600));
-          addLog('✓ Balance encrypted with MPC');
-          
-          addLog('Generating ZK solvency proof...');
-          addLog('  Private input: balance = [ENCRYPTED]');
-          info('Generating ZK proof with Noir...');
-          
-          const threshold = balance ? Math.max(balance * 0.1, 0.01) : 0.01;
-          addLog(`  Public input: threshold = ${threshold.toFixed(4)} SOL`);
-          
-          await new Promise(r => setTimeout(r, 1200));
-          addLog('  Noir circuit: solvency_proof.nr');
-          addLog('  Backend: UltraHonk (Barretenberg)');
-          
-          await new Promise(r => setTimeout(r, 800));
-          setProofGenerated(true);
-          addLog('✓ ZK Proof generated successfully');
-          addLog(`  Proof size: 1.2 KB`);
-          success('ZK proof generated!');
-          
-          setCurrentStep('access');
+          if (!prismProtocol || !contextAddress || balance === null) {
+            error('PrismProtocol not initialized or missing context');
+            addLog('ERROR: Cannot generate proof - PrismProtocol not ready');
+            break;
+          }
+
+          try {
+            addLog('═══════════════════════════════════════');
+            addLog('STEP 1: ARCIUM MPC ENCRYPTION');
+            addLog('═══════════════════════════════════════');
+            addLog('Initializing Arcium MPC encryption...');
+            info('Encrypting balance with Arcium MPC...');
+            
+            const threshold = balance ? Math.max(balance * 0.1, 0.01) : 0.01;
+            const thresholdLamports = BigInt(Math.floor(threshold * LAMPORTS_PER_SOL));
+            const balanceLamports = BigInt(Math.floor(balance * LAMPORTS_PER_SOL));
+            
+            addLog(`  Balance: [HIDDEN] (${balance.toFixed(4)} SOL)`);
+            addLog(`  Threshold: ${threshold.toFixed(4)} SOL (${thresholdLamports} lamports)`);
+            addLog(`  Context: ${contextAddress.slice(0, 8)}...`);
+            
+            const arciumStatus = prismProtocol.getArciumStatus();
+            addLog(`  Arcium Mode: ${arciumStatus.mode}`);
+            if (arciumStatus.mxeAddress) {
+              addLog(`  MXE Address: ${arciumStatus.mxeAddress.slice(0, 8)}...`);
+            }
+            
+            // Generate encrypted solvency proof (Arcium + Noir)
+            addLog('Calling generateEncryptedSolvencyProof...');
+            console.log('[DEMO] Starting encrypted proof generation...');
+            console.log('[DEMO] Balance:', balanceLamports.toString());
+            console.log('[DEMO] Threshold:', thresholdLamports.toString());
+            
+            const proofResult = await prismProtocol.generateEncryptedSolvencyProof({
+              actualBalance: balanceLamports,
+              threshold: thresholdLamports,
+              contextPubkey: new PublicKey(contextAddress)
+            });
+            
+            console.log('[DEMO] Proof generation complete:', proofResult);
+            
+            addLog('✓ Arcium MPC encryption complete');
+            addLog(`  Commitment: ${proofResult.encryptedBalance.commitment.slice(0, 16)}...`);
+            addLog(`  Encrypted value size: ${proofResult.encryptedBalance.encryptedValue.length} bytes`);
+            addLog(`  Mode: ${prismProtocol.getArciumStatus().mode}`);
+            
+            addLog('');
+            addLog('═══════════════════════════════════════');
+            addLog('STEP 2: NOIR ZK PROOF GENERATION');
+            addLog('═══════════════════════════════════════');
+            addLog('✓ Noir ZK proof generated');
+            addLog(`  Circuit: solvency_proof.nr`);
+            addLog(`  Backend: UltraHonk (Barretenberg)`);
+            addLog(`  Proof size: ${proofResult.proof.proof.length} bytes`);
+            addLog(`  Public inputs: threshold = ${proofResult.proof.publicInputs.threshold}`);
+            addLog(`  Is solvent: ${proofResult.proof.publicInputs.isSolvent}`);
+            
+            setProofGenerated(true);
+            success('ZK proof generated with Arcium encryption!');
+            
+            setCurrentStep('access');
+          } catch (err: any) {
+            console.error('[DEMO] Proof generation error:', err);
+            console.error('[DEMO] Error stack:', err.stack);
+            addLog(`ERROR: ${err.message || 'Unknown error'}`);
+            addLog('Falling back to simulation mode...');
+            error('Proof generation failed, using simulation');
+            
+            // Fallback to simulation
+            addLog('Initializing Arcium MPC encryption (simulation)...');
+            await new Promise(r => setTimeout(r, 600));
+            addLog('✓ Balance encrypted with MPC (simulation)');
+            
+            addLog('Generating ZK solvency proof (simulation)...');
+            await new Promise(r => setTimeout(r, 1200));
+            addLog('✓ ZK Proof generated (simulation)');
+            setProofGenerated(true);
+            setCurrentStep('access');
+          }
           break;
           
         case 'access':
@@ -270,40 +398,70 @@ export const DarkPoolDemo: React.FC = () => {
         case 'burn':
           addLog('Burning disposable context...');
           addLog(`  Revoking: ${contextAddress?.slice(0, 8)}...`);
-          addLog('Sending revoke transaction...');
-          info('Revoking context on-chain...');
           
-          if (contextIndex !== null) {
-            // Real on-chain transaction!
-            const revokeResult = await prism.revokeContext(contextIndex);
-            
-            if (revokeResult) {
-              addTx(revokeResult.signature, 'revoke_context');
-              addLog('✓ Context revoked ON-CHAIN!');
+          if (contextIndex === null || !contextAddress) {
+            addLog('⚠ No context to revoke - may have been revoked in a previous run');
+            addLog('This is normal if you ran the demo before');
+            setCurrentStep('complete');
+            break;
+          }
+          
+          // Check context state before attempting to revoke
+          try {
+            const contextPDA = new PublicKey(contextAddress);
+            const contextAccount = await prism.fetchContextIdentity(contextPDA);
+            if (contextAccount?.revoked) {
+              addLog('⚠ Context was already revoked in a previous run');
+              addLog('This is expected if you ran the demo before');
               addLog('');
               addLog('═══════════════════════════════════════');
               addLog('   PRIVACY PRESERVED');
               addLog('═══════════════════════════════════════');
               addLog('');
               addLog('No one can link this trade to your wallet');
-              addLog(`Total transactions: ${txSignatures.length + 1}`);
-              
-              // Show success animation and toast
-              setShowSuccess(true);
-              success('Context burned! Privacy preserved!');
-              setTimeout(() => setShowSuccess(false), 2000);
-              
+              addLog(`Total transactions: ${txSignatures.length}`);
               setCurrentStep('complete');
-            } else {
-              const errorMsg = prism.error || 'Failed to revoke context';
-              addLog(`ERROR: ${errorMsg}`);
-              error(errorMsg);
-              // Still advance for demo purposes
-              setCurrentStep('complete');
+              break;
             }
+          } catch (err) {
+            addLog('Could not verify context state, attempting to revoke...');
+          }
+          
+          addLog('Sending revoke transaction...');
+          info('Revoking context on-chain...');
+          
+          // Real on-chain transaction!
+          const revokeResult = await prism.revokeContext(contextIndex);
+          
+          if (revokeResult) {
+            // Handle both successful revocation and already-revoked cases
+            if (revokeResult.signature === 'already_revoked') {
+              addLog('✓ Context was already revoked (from previous transaction)');
+              addLog('This can happen if the transaction was processed in a previous attempt');
+            } else {
+              addTx(revokeResult.signature, 'revoke_context');
+              addLog('✓ Context revoked ON-CHAIN!');
+            }
+            
+            addLog('');
+            addLog('═══════════════════════════════════════');
+            addLog('   PRIVACY PRESERVED');
+            addLog('═══════════════════════════════════════');
+            addLog('');
+            addLog('No one can link this trade to your wallet');
+            addLog(`Total transactions: ${txSignatures.length + (revokeResult.signature !== 'already_revoked' ? 1 : 0)}`);
+            
+            // Show success animation and toast
+            setShowSuccess(true);
+            success('Context burned! Privacy preserved!');
+            setTimeout(() => setShowSuccess(false), 2000);
+            
+            setCurrentStep('complete');
           } else {
-            addLog('Context already revoked or not found');
-            error('Context not found');
+            const errorMsg = prism.error || 'Failed to revoke context';
+            addLog(`ERROR: ${errorMsg}`);
+            error(errorMsg);
+            // Still advance for demo purposes
             setCurrentStep('complete');
           }
           break;
@@ -473,7 +631,9 @@ export const DarkPoolDemo: React.FC = () => {
             {/* Action Button / Wallet Button */}
             {currentStep === 'connect' && !connected ? (
               <div className="wallet-button-wrapper">
-                <WalletMultiButton className="w-full !bg-gradient-to-r !from-cyan-500/20 !to-fuchsia-500/20 !border !border-cyan-400/30 !rounded-xl !py-3 !text-base !font-semibold hover:!shadow-[0_0_20px_rgba(0,255,255,0.3)]" />
+                {typeof window !== 'undefined' && (
+                  <WalletMultiButton className="w-full !bg-gradient-to-r !from-cyan-500/20 !to-fuchsia-500/20 !border !border-cyan-400/30 !rounded-xl !py-3 !text-base !font-semibold hover:!shadow-[0_0_20px_rgba(0,255,255,0.3)]" />
+                )}
               </div>
             ) : (
               <HoloButton 

@@ -22,7 +22,20 @@ export default function App({ Component, pageProps }: AppProps) {
 
   return (
     <ConnectionProvider endpoint={endpoint}>
-      <WalletProvider wallets={wallets} autoConnect>
+      <WalletProvider 
+        wallets={wallets} 
+        autoConnect
+        onError={(error) => {
+          // Silently handle user rejection errors (normal when user cancels)
+          if (error.name === 'WalletConnectionError' && 
+              error.message?.includes('User rejected')) {
+            // User cancelled - this is expected behavior, don't log as error
+            return;
+          }
+          // Log other wallet errors
+          console.error('Wallet error:', error);
+        }}
+      >
         <WalletModalProvider>
           <Component {...pageProps} />
         </WalletModalProvider>

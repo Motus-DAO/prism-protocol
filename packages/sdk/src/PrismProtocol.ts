@@ -9,7 +9,7 @@ import {
   SystemProgram,
   sendAndConfirmTransaction
 } from '@solana/web3.js';
-import { Program, AnchorProvider, Wallet, BN } from '@coral-xyz/anchor';
+import { Program, AnchorProvider, Wallet, BN, Idl } from '@coral-xyz/anchor';
 import { SolvencyProver } from './proofs/SolvencyProver';
 import { ArciumEncryption, type EncryptedBalance } from './encryption/ArciumEncryption';
 import { 
@@ -25,6 +25,7 @@ import {
   type CreateContextResult,
   type RevokeContextResult
 } from './types';
+import IDL from './idl.json';
 
 // Default program ID (deployed on devnet)
 const DEFAULT_PROGRAM_ID = new PublicKey('DkD3vtS6K8dJFnGmm9X9CphNDU5LYTYyP8Ve5EEVENdu');
@@ -55,7 +56,7 @@ const DEFAULT_PROGRAM_ID = new PublicKey('DkD3vtS6K8dJFnGmm9X9CphNDU5LYTYyP8Ve5E
  * });
  * 
  * // Revoke context after use
- * await prism.revokeContext(context.contextAddress);
+ * await prism.revokeContextByIndex(context.contextIndex);
  * ```
  */
 export class PrismProtocol {
@@ -93,15 +94,20 @@ export class PrismProtocol {
       const provider = new AnchorProvider(
         this.connection,
         this.wallet,
-        { commitment: 'confirmed' }
+        { commitment: 'confirmed', preflightCommitment: 'confirmed' }
       );
 
       // Initialize Arcium encryption
       await this.arciumEncryption.initialize();
 
       // Load the program IDL
-      // In production, this would be fetched from the chain or bundled
-      // For now, we'll create a minimal program interface
+      const idlWithAddress = {
+        ...IDL,
+        address: this.programId.toBase58()
+      } as Idl;
+
+      // Initialize the Anchor program
+      this.program = new Program(idlWithAddress, provider);
       
       this.initialized = true;
       console.log('PrismProtocol initialized');
@@ -146,45 +152,76 @@ export class PrismProtocol {
    * This is a one-time operation per wallet
    */
   async createRootIdentity(options?: CreateRootOptions): Promise<CreateRootResult> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.program) {
+      throw new Error('Program not initialized');
+    }
+
     const privacyLevel = options?.privacyLevel ?? PrivacyLevel.High;
-    
     const [rootPDA] = this.getRootIdentityPDA();
     
     console.log('Creating root identity...');
     console.log(`  Root PDA: ${rootPDA.toBase58()}`);
     console.log(`  Privacy Level: ${PrivacyLevel[privacyLevel]}`);
 
-    // In production, this would call the Anchor program
-    // For now, return the expected result
-    // The actual implementation would be:
-    /*
-    const tx = await this.program.methods
-      .createRootIdentity(privacyLevel)
-      .accounts({
-        user: this.wallet.publicKey,
-        rootIdentity: rootPDA,
-        systemProgram: SystemProgram.programId
-      })
-      .rpc();
-    */
+    try {
+      const signature = await this.program.methods
+        .createRootIdentity(privacyLevel)
+        .accounts({
+          user: this.wallet.publicKey,
+          rootIdentity: rootPDA,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
 
-    return {
-      rootAddress: rootPDA,
-      signature: 'pending_implementation',
-      privacyLevel
-    };
+      console.log('Root identity created:', signature);
+
+      return {
+        rootAddress: rootPDA,
+        signature,
+        privacyLevel
+      };
+    } catch (err: any) {
+      // If root identity already exists, that's okay
+      if (err.message?.includes('already in use') || err.message?.includes('AccountDiscriminatorAlreadyExists')) {
+        console.log('Root identity already exists');
+        return {
+          rootAddress: rootPDA,
+          signature: 'existing',
+          privacyLevel
+        };
+      }
+      throw err;
+    }
   }
 
   /**
    * Get the root identity for a user
    */
   async getRootIdentity(userPubkey?: PublicKey): Promise<RootIdentity | null> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.program) {
+      return null;
+    }
+
     const [rootPDA] = this.getRootIdentityPDA(userPubkey);
     
     try {
-      // In production, fetch from chain
-      // const account = await this.program.account.rootIdentity.fetch(rootPDA);
-      return null; // Placeholder
+      const account = await (this.program.account as any).rootIdentity.fetch(rootPDA);
+      
+      return {
+        owner: account.owner as PublicKey,
+        createdAt: account.createdAt.toNumber(),
+        privacyLevel: account.privacyLevel as PrivacyLevel,
+        contextCount: account.contextCount,
+        bump: account.bump
+      };
     } catch {
       return null;
     }
@@ -198,10 +235,30 @@ export class PrismProtocol {
    * Create a new context (disposable identity)
    */
   async createContext(options: CreateContextOptions): Promise<CreateContextResult> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.program) {
+      throw new Error('Program not initialized');
+    }
+
     const [rootPDA] = this.getRootIdentityPDA();
-    const rootIdentity = await this.getRootIdentity();
-    const contextIndex = rootIdentity?.contextCount ?? 0;
     
+    // Check if root identity exists, create if needed
+    let rootIdentity = await this.getRootIdentity();
+    if (!rootIdentity) {
+      console.log('Root identity not found, creating...');
+      await this.createRootIdentity({ privacyLevel: options.privacyLevel ?? PrivacyLevel.High });
+      // Wait a bit for confirmation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      rootIdentity = await this.getRootIdentity();
+      if (!rootIdentity) {
+        throw new Error('Failed to create root identity');
+      }
+    }
+
+    const contextIndex = rootIdentity.contextCount;
     const [contextPDA] = this.getContextPDA(rootPDA, contextIndex);
     
     const maxPerTx = options.maxPerTransaction ?? 1000000000n; // Default 1 SOL
@@ -211,37 +268,141 @@ export class PrismProtocol {
     console.log(`  Context PDA: ${contextPDA.toBase58()}`);
     console.log(`  Max per Tx: ${maxPerTx} lamports`);
 
-    // In production, call the program
-    
-    return {
-      contextAddress: contextPDA,
-      signature: 'pending_implementation',
-      contextType: options.type,
-      contextIndex
-    };
+    try {
+      const signature = await this.program.methods
+        .createContext(options.type, new BN(maxPerTx.toString()))
+        .accounts({
+          user: this.wallet.publicKey,
+          rootIdentity: rootPDA,
+          contextIdentity: contextPDA,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log('Context created:', signature);
+
+      return {
+        contextAddress: contextPDA,
+        signature,
+        contextType: options.type,
+        contextIndex
+      };
+    } catch (err: any) {
+      console.error('Error creating context:', err);
+      throw err;
+    }
   }
 
   /**
    * Revoke a context (burn after use)
+   * Note: This requires the contextIndex. For convenience, you can also use revokeContextByIndex.
    */
   async revokeContext(contextAddress: PublicKey): Promise<RevokeContextResult> {
-    console.log(`Revoking context: ${contextAddress.toBase58()}`);
-    
-    // In production, call the program
-    
-    return {
-      signature: 'pending_implementation',
-      contextAddress,
-      totalSpent: 0n
-    };
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.program) {
+      throw new Error('Program not initialized');
+    }
+
+    // We need to find the context index by fetching the context account
+    // For now, we'll require the index to be passed via a helper method
+    throw new Error('Use revokeContextByIndex(contextIndex) instead. Context address lookup not yet implemented.');
+  }
+
+  /**
+   * Revoke a context by its index (burn after use)
+   */
+  async revokeContextByIndex(contextIndex: number): Promise<RevokeContextResult> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.program) {
+      throw new Error('Program not initialized');
+    }
+
+    const [rootPDA] = this.getRootIdentityPDA();
+    const [contextPDA] = this.getContextPDA(rootPDA, contextIndex);
+
+    console.log(`Revoking context: ${contextPDA.toBase58()}`);
+
+    try {
+      // Fetch context to get totalSpent before revoking
+      let totalSpent = 0n;
+      try {
+        const contextAccount = await (this.program.account as any).contextIdentity.fetch(contextPDA);
+        totalSpent = BigInt(contextAccount.totalSpent.toString());
+      } catch {
+        // Context might not exist or already revoked
+      }
+
+      const signature = await this.program.methods
+        .revokeContext()
+        .accounts({
+          user: this.wallet.publicKey,
+          rootIdentity: rootPDA,
+          contextIdentity: contextPDA,
+        })
+        .rpc();
+
+      console.log('Context revoked:', signature);
+
+      return {
+        signature,
+        contextAddress: contextPDA,
+        totalSpent
+      };
+    } catch (err: any) {
+      console.error('Error revoking context:', err);
+      throw err;
+    }
   }
 
   /**
    * Get all contexts for the connected wallet
    */
   async getContexts(): Promise<ContextIdentity[]> {
-    // In production, fetch from chain
-    return [];
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.program) {
+      return [];
+    }
+
+    const rootIdentity = await this.getRootIdentity();
+    if (!rootIdentity) {
+      return [];
+    }
+
+    const [rootPDA] = this.getRootIdentityPDA();
+    const contexts: ContextIdentity[] = [];
+
+    // Fetch all contexts by index
+    for (let i = 0; i < rootIdentity.contextCount; i++) {
+      try {
+        const [contextPDA] = this.getContextPDA(rootPDA, i);
+        const account = await (this.program.account as any).contextIdentity.fetch(contextPDA);
+        
+        contexts.push({
+          rootIdentity: account.rootIdentity as PublicKey,
+          contextType: account.contextType as ContextType,
+          createdAt: account.createdAt.toNumber(),
+          maxPerTransaction: BigInt(account.maxPerTransaction.toString()),
+          totalSpent: BigInt(account.totalSpent.toString()),
+          revoked: account.revoked,
+          contextIndex: account.contextIndex,
+          bump: account.bump
+        });
+      } catch {
+        // Context might not exist or be revoked, skip it
+        continue;
+      }
+    }
+
+    return contexts;
   }
 
   // ============================================================================

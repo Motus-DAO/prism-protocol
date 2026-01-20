@@ -33,29 +33,79 @@ export class SolvencyProver {
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
+    // Check if we're in a browser environment (WASM requires browser APIs)
+    if (typeof window === 'undefined') {
+      console.log('SolvencyProver: Server-side environment detected, using simulation mode');
+      this.initialized = true;
+      this.useMockMode = true;
+      return;
+    }
+
     try {
       // Load the compiled circuit artifact
       this.circuit = await this.loadCircuit();
       
-      // Dynamic imports for Noir packages
-      // These will be available when running in Node.js/browser environment
+      if (!this.circuit || !this.circuit.bytecode) {
+        throw new Error('Circuit bytecode not found');
+      }
+      
+      console.log('Initializing Barretenberg WASM backend...');
+      
+      // Dynamic imports for Noir and Barretenberg packages
       const noirModule = await import('@noir-lang/noir_js');
       const bbModule = await import('@aztec/bb.js');
       
-      // Initialize the backend (UltraHonk prover from Aztec)
-      // @ts-ignore - Dynamic import types
-      this.backend = new bbModule.UltraHonkBackend(this.circuit.bytecode);
+      // Verify modules are loaded correctly
+      if (!bbModule || !bbModule.UltraHonkBackend || !bbModule.Barretenberg) {
+        throw new Error('UltraHonkBackend or Barretenberg not available in @aztec/bb.js');
+      }
       
-      // Initialize Noir with the circuit
+      if (!noirModule || !noirModule.Noir) {
+        throw new Error('Noir not available in @noir-lang/noir_js');
+      }
+      
+      // IMPORTANT: Initialize Barretenberg WASM first
+      // This sets up the WASM backend that UltraHonkBackend needs
+      console.log('  Creating Barretenberg instance (this may take a moment)...');
+      // @ts-ignore - Dynamic import types
+      const barretenberg = await bbModule.Barretenberg.new();
+      console.log('  Barretenberg WASM initialized ✓');
+      
+      console.log('Initializing UltraHonkBackend...');
+      
+      // Initialize the backend with BOTH bytecode AND the Barretenberg api
+      // @ts-ignore - Dynamic import types
+      this.backend = new bbModule.UltraHonkBackend(this.circuit.bytecode, barretenberg);
+      
+      // Verify backend is initialized
+      if (!this.backend) {
+        throw new Error('Backend initialization failed');
+      }
+      console.log('  UltraHonkBackend initialized ✓');
+      
+      console.log('Initializing Noir circuit executor...');
+      
+      // Initialize Noir with just the circuit
       // @ts-ignore - Dynamic import types
       this.noir = new noirModule.Noir(this.circuit);
       
+      if (!this.noir) {
+        throw new Error('Noir initialization failed');
+      }
+      
+      // Verify Noir has the execute method
+      if (typeof this.noir.execute !== 'function') {
+        throw new Error('Noir.execute is not a function');
+      }
+      console.log('  Noir circuit executor initialized ✓');
+      
       this.initialized = true;
       this.useMockMode = false;
-      console.log('SolvencyProver initialized with real backend');
+      console.log('SolvencyProver initialized with real Noir backend ✓');
     } catch (error) {
       // Fallback to mock mode for environments without WASM support
       console.log('SolvencyProver: Using simulation mode (WASM backend not available)');
+      console.error('Initialization error:', error);
       this.initialized = true;
       this.useMockMode = true;
     }
@@ -65,18 +115,44 @@ export class SolvencyProver {
    * Load the compiled Noir circuit artifact
    */
   private async loadCircuit(): Promise<any> {
-    // Try to load from file system (Node.js)
+    // Browser/Next.js environment - try to fetch or import
+    if (typeof window !== 'undefined' || (typeof process !== 'undefined' && process.env.NEXT_RUNTIME)) {
+      // Browser or Next.js client-side
+      try {
+        // Try fetching from public folder (if copied there)
+        const response = await fetch('/circuits/solvency_proof.json');
+        if (response.ok) {
+          return await response.json();
+        }
+      } catch (e) {
+        // Ignore fetch errors, try import
+      }
+      
+      // Try dynamic import - webpack may bundle this
+      try {
+        // @ts-ignore - webpack may not resolve this path
+        const circuitModule = await import('../../circuits/solvency_proof.json');
+        return circuitModule.default || circuitModule;
+      } catch (e) {
+        // Will fall back to mock mode
+        throw new Error('Circuit not available in browser - using simulation mode');
+      }
+    }
+    
+    // Node.js environment - use file system
+    // This code only runs in Node.js, so webpack won't try to bundle 'fs'
     try {
-      const fs = await import('fs');
-      const path = await import('path');
+      // Dynamic import with string literal to help webpack ignore it
+      const fs = await import('fs' as any);
+      const path = await import('path' as any);
       const circuitPath = path.join(__dirname, '../../circuits/solvency_proof.json');
       const circuitJson = fs.readFileSync(circuitPath, 'utf-8');
       return JSON.parse(circuitJson);
     } catch (e) {
-      // If file system not available, try alternate path
+      // Try alternate path
       try {
-        const fs = await import('fs');
-        const path = await import('path');
+        const fs = await import('fs' as any);
+        const path = await import('path' as any);
         const circuitPath = path.join(process.cwd(), 'circuits/solvency_proof/target/solvency_proof.json');
         const circuitJson = fs.readFileSync(circuitPath, 'utf-8');
         return JSON.parse(circuitJson);
@@ -127,20 +203,39 @@ export class SolvencyProver {
     }
 
     try {
+      // Verify noir and backend are initialized
+      if (!this.noir || !this.backend) {
+        throw new Error('Noir or backend not initialized');
+      }
+      
       // Prepare inputs for the Noir circuit
       const inputs = {
         actual_balance: actualBalance.toString(),
         threshold: threshold.toString()
       };
 
-      // Generate the proof using Noir
+      console.log('  Executing circuit to generate witness...');
+      
+      // Step 1: Execute the circuit to generate the witness
       const { witness } = await this.noir.execute(inputs);
-      const proof = await this.backend.generateProof(witness);
+      
+      if (!witness) {
+        throw new Error('Failed to generate witness');
+      }
+      
+      console.log('  Witness generated, creating proof...');
+      
+      // Step 2: Generate the proof using the backend
+      const proofData = await this.backend.generateProof(witness);
+      
+      if (!proofData || !proofData.proof) {
+        throw new Error('Proof generation returned invalid result');
+      }
 
       console.log('Proof generated successfully!');
 
       return {
-        proof: proof.proof,
+        proof: proofData.proof,
         publicInputs: {
           threshold,
           isSolvent: true
@@ -149,6 +244,11 @@ export class SolvencyProver {
       };
     } catch (error) {
       console.error('Failed to generate proof with backend, falling back to simulation:', error);
+      console.error('Error details:', {
+        hasBackend: !!this.backend,
+        hasNoir: !!this.noir,
+        errorMessage: error instanceof Error ? error.message : String(error)
+      });
       return this.generateMockProof(actualBalance, threshold);
     }
   }

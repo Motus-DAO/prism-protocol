@@ -127,10 +127,28 @@ export function usePrismProgram() {
     setIsLoading(true);
     setError(null);
 
-    try {
-      const result = getRootPDA();
-      if (!result) throw new Error('Could not derive PDA');
+    // Get PDA outside try block for error handling
+    const result = getRootPDA();
+    if (!result) {
+      setError('Could not derive PDA');
+      setIsLoading(false);
+      return null;
+    }
 
+    // Pre-check: Verify if root identity already exists
+    try {
+      const existing = await fetchRootIdentity();
+      if (existing) {
+        console.log('Root identity already exists - skipping creation');
+        setIsLoading(false);
+        return { signature: 'existing', pda: result.pda };
+      }
+    } catch (checkErr) {
+      // Root identity doesn't exist, continue with creation
+      console.log('Root identity not found, will create new one');
+    }
+
+    try {
       console.log('Creating root identity...');
       console.log('  User:', wallet.publicKey.toBase58());
       console.log('  Root PDA:', result.pda.toBase58());
@@ -148,22 +166,51 @@ export function usePrismProgram() {
       console.log('Root identity created:', signature);
       return { signature, pda: result.pda };
     } catch (err: any) {
-      console.error('Error creating root identity:', err);
-      
-      // Parse common errors
       let errorMessage = err.message || 'Failed to create root identity';
-      if (err.message?.includes('already in use')) {
-        errorMessage = 'Root identity already exists';
+      let isActualError = true;
+      
+      // Handle "already processed" - transaction might have succeeded
+      if (err.message?.includes('already been processed') || 
+          err.message?.includes('already processed') ||
+          err.transactionMessage?.includes('already been processed') ||
+          err.transactionMessage?.includes('simulation failed')) {
+        console.log('Transaction simulation failed - checking if root identity was created...');
+        
+        // Check if root identity was actually created
+        try {
+          const rootIdentity = await fetchRootIdentity();
+          if (rootIdentity) {
+            console.log('✓ Root identity was created successfully (duplicate transaction)');
+            setIsLoading(false);
+            return { signature: 'duplicate', pda: result.pda };
+          }
+        } catch (checkErr) {
+          console.error('Error checking root identity state:', checkErr);
+        }
+      } else if (err.message?.includes('already in use') || 
+                 err.message?.includes('AccountDiscriminatorAlreadyExists')) {
+        console.log('✓ Root identity already exists (program error) - operation successful');
+        setIsLoading(false);
+        return { signature: 'existing', pda: result.pda };
       } else if (err.message?.includes('insufficient')) {
         errorMessage = 'Insufficient SOL for transaction';
+        isActualError = true;
       }
       
-      setError(errorMessage);
-      return null;
+      // Only log as error and set error state if it's an actual error
+      if (isActualError) {
+        console.error('Error creating root identity:', err);
+        setError(errorMessage);
+        return null;
+      }
+      
+      // If we get here, it was handled as success above
+      setIsLoading(false);
+      return { signature: 'existing', pda: result.pda };
     } finally {
       setIsLoading(false);
     }
-  }, [program, wallet.publicKey, getRootPDA]);
+  }, [program, wallet.publicKey, getRootPDA, fetchRootIdentity]);
 
   // Create Context (will also create root identity if needed)
   const createContext = useCallback(async (
@@ -178,10 +225,15 @@ export function usePrismProgram() {
     setIsLoading(true);
     setError(null);
 
-    try {
-      const rootResult = getRootPDA();
-      if (!rootResult) throw new Error('Could not derive root PDA');
+    // Get root PDA outside try block for error handling
+    const rootResult = getRootPDA();
+    if (!rootResult) {
+      setError('Could not derive root PDA');
+      setIsLoading(false);
+      return null;
+    }
 
+    try {
       // Check if root identity exists
       let rootIdentity = await fetchRootIdentity();
       
@@ -193,14 +245,30 @@ export function usePrismProgram() {
           throw new Error('Failed to create root identity');
         }
         
-        // Wait for confirmation
-        console.log('Waiting for confirmation...');
-        await new Promise(r => setTimeout(r, 2000));
-        
-        // Fetch the newly created root identity
-        rootIdentity = await fetchRootIdentity();
-        if (!rootIdentity) {
-          throw new Error('Root identity not found after creation');
+        // If root identity was created (or already existed), wait a bit and fetch it
+        if (createResult.signature === 'existing' || 
+            createResult.signature === 'duplicate' || 
+            createResult.signature) {
+          console.log('Waiting for confirmation...');
+          // Wait longer for first-time creation to ensure it's confirmed
+          await new Promise(r => setTimeout(r, 3000));
+          
+          // Fetch the root identity - retry a few times if needed
+          let retries = 3;
+          while (retries > 0 && !rootIdentity) {
+            rootIdentity = await fetchRootIdentity();
+            if (!rootIdentity) {
+              console.log(`Root identity not found yet, retrying... (${retries} attempts left)`);
+              await new Promise(r => setTimeout(r, 1000));
+              retries--;
+            }
+          }
+          
+          if (!rootIdentity) {
+            throw new Error('Root identity not found after creation. Please try again.');
+          }
+        } else {
+          throw new Error('Root identity creation failed');
         }
       }
 
@@ -232,19 +300,59 @@ export function usePrismProgram() {
         contextIndex 
       };
     } catch (err: any) {
-      console.error('Error creating context:', err);
-      
       let errorMessage = err.message || 'Failed to create context';
-      if (err.message?.includes('insufficient')) {
+      let isActualError = true;
+      
+      // Handle "already processed" - transaction might have succeeded
+      if (err.message?.includes('already been processed') || 
+          err.message?.includes('already processed') ||
+          err.transactionMessage?.includes('already been processed') ||
+          err.transactionMessage?.includes('simulation failed')) {
+        console.log('Transaction simulation failed - checking if context was created...');
+        
+        // Check if context was actually created
+        try {
+          const rootIdentity = await fetchRootIdentity();
+          if (rootIdentity) {
+            const contextIndex = rootIdentity.contextCount - 1; // Last created context
+            const contextResult = getContextPDA(rootResult.pda, contextIndex);
+            const contextAccount = await fetchContextIdentity(contextResult.pda);
+            
+            if (contextAccount && !contextAccount.revoked) {
+              console.log('✓ Context was created successfully (duplicate transaction)');
+              return {
+                signature: 'duplicate',
+                contextPda: contextResult.pda,
+                rootPda: rootResult.pda,
+                contextIndex
+              };
+            }
+          }
+        } catch (checkErr) {
+          console.error('Error checking context state:', checkErr);
+        }
+        
+        errorMessage = 'Transaction already processed. Please refresh and try again.';
+      } else if (err.message?.includes('insufficient')) {
         errorMessage = 'Insufficient SOL for transaction. Get devnet SOL from faucet.solana.com';
+        isActualError = true;
       } else if (err.logs) {
         // Try to extract more info from logs
         const errorLog = err.logs.find((log: string) => log.includes('Error'));
         if (errorLog) {
           errorMessage = errorLog;
         }
+        isActualError = true;
       }
       
+      // Only log as error and set error state if it's an actual error
+      if (isActualError) {
+        console.error('Error creating context:', err);
+        setError(errorMessage);
+        return null;
+      }
+      
+      // If we get here, it was handled as success above
       setError(errorMessage);
       return null;
     } finally {
@@ -264,15 +372,44 @@ export function usePrismProgram() {
     setIsLoading(true);
     setError(null);
 
+    // Get PDAs outside try block for error handling
+    const rootResult = getRootPDA();
+    if (!rootResult) {
+      setError('Could not derive root PDA');
+      setIsLoading(false);
+      return null;
+    }
+
+    const contextResult = getContextPDA(rootResult.pda, contextIndex);
+
     try {
-      const rootResult = getRootPDA();
-      if (!rootResult) throw new Error('Could not derive root PDA');
-
-      const contextResult = getContextPDA(rootResult.pda, contextIndex);
-
       console.log('Revoking context...');
       console.log('  Context Index:', contextIndex);
       console.log('  Context PDA:', contextResult.pda.toBase58());
+
+      // Pre-check: Verify context exists and is not already revoked
+      try {
+        const contextAccount = await fetchContextIdentity(contextResult.pda);
+        if (!contextAccount) {
+          setError('Context not found');
+          setIsLoading(false);
+          return null;
+        }
+        if (contextAccount.revoked) {
+          console.log('Context already revoked - skipping transaction');
+          return { signature: 'already_revoked' };
+        }
+        console.log('  Context state: Active (not revoked)');
+      } catch (checkErr: any) {
+        // Context might not exist - that's okay, we'll let the transaction fail naturally
+        if (checkErr.message?.includes('Account does not exist')) {
+          setError('Context account does not exist');
+          setIsLoading(false);
+          return null;
+        }
+        console.warn('Could not pre-check context state:', checkErr);
+        // Continue anyway - transaction will fail if there's a real issue
+      }
 
       const signature = await program.methods
         .revokeContext()
@@ -286,15 +423,55 @@ export function usePrismProgram() {
       console.log('Context revoked:', signature);
       return { signature };
     } catch (err: any) {
-      console.error('Error revoking context:', err);
-      
       let errorMessage = err.message || 'Failed to revoke context';
-      if (err.message?.includes('already revoked')) {
-        errorMessage = 'Context already revoked';
+      let isActualError = true;
+      
+      // Handle "already processed" - transaction might have succeeded
+      if (err.message?.includes('already been processed') || 
+          err.message?.includes('already processed') ||
+          err.transactionMessage?.includes('already been processed') ||
+          err.transactionMessage?.includes('simulation failed')) {
+        console.log('Transaction simulation failed - checking if context was already revoked...');
+        
+        // Check if context was actually revoked (might have been revoked in previous attempt)
+        try {
+          const contextAccount = await fetchContextIdentity(contextResult.pda);
+          if (contextAccount) {
+            if (contextAccount.revoked) {
+              console.log('✓ Context was already revoked - operation successful');
+              return { signature: 'already_revoked' };
+            } else {
+              console.log('⚠ Context still active - transaction may have failed');
+              errorMessage = 'Transaction failed. Context may have been revoked in a previous transaction.';
+            }
+          } else {
+            // Context doesn't exist - might have been revoked or never created
+            console.log('⚠ Context account not found - may have been revoked');
+            errorMessage = 'Context account not found. It may have been revoked or never created.';
+          }
+        } catch (checkErr) {
+          console.error('Error checking context state:', checkErr);
+          errorMessage = 'Transaction failed. Unable to verify context state.';
+        }
+      } else if (err.message?.includes('already revoked') || 
+                 err.message?.includes('ContextAlreadyRevoked') ||
+                 err.code === 6002) {
+        console.log('✓ Context already revoked (program error) - operation successful');
+        return { signature: 'already_revoked' };
+      } else {
+        // This is a real error - log it
+        console.error('Error revoking context:', err);
+        isActualError = true;
       }
       
-      setError(errorMessage);
-      return null;
+      // Only set error and return null if it's an actual error
+      if (isActualError) {
+        setError(errorMessage);
+        return null;
+      }
+      
+      // If we get here, it was handled as success above
+      return { signature: 'already_revoked' };
     } finally {
       setIsLoading(false);
     }

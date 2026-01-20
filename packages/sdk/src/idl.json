@@ -1,0 +1,745 @@
+{
+  "address": "DkD3vtS6K8dJFnGmm9X9CphNDU5LYTYyP8Ve5EEVENdu",
+  "metadata": {
+    "name": "prism",
+    "version": "0.1.0",
+    "spec": "0.1.0",
+    "description": "Prism Protocol - Privacy Infrastructure for Solana"
+  },
+  "instructions": [
+    {
+      "name": "check_spending_limit",
+      "docs": [
+        "Check if a transaction amount is within context spending limits",
+        "Called before executing trades in dark pools"
+      ],
+      "discriminator": [
+        56,
+        95,
+        181,
+        30,
+        235,
+        212,
+        202,
+        63
+      ],
+      "accounts": [
+        {
+          "name": "context_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  120,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "context_identity.root_identity",
+                "account": "ContextIdentity"
+              },
+              {
+                "kind": "account",
+                "path": "context_identity.context_index",
+                "account": "ContextIdentity"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_context",
+      "docs": [
+        "Create a new context (disposable identity) linked to root",
+        "Used for dark pool trading, DeFi, etc."
+      ],
+      "discriminator": [
+        87,
+        62,
+        197,
+        44,
+        169,
+        57,
+        243,
+        178
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "root_identity",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "context_identity",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  120,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "root_identity"
+              },
+              {
+                "kind": "account",
+                "path": "root_identity.context_count",
+                "account": "RootIdentity"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "context_type",
+          "type": "u8"
+        },
+        {
+          "name": "max_per_transaction",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "create_root_identity",
+      "docs": [
+        "Create a root identity for a user (one per wallet)",
+        "This is the master identity that owns all contexts"
+      ],
+      "discriminator": [
+        53,
+        5,
+        65,
+        112,
+        177,
+        7,
+        38,
+        54
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "root_identity",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "privacy_level",
+          "type": "u8"
+        }
+      ]
+    },
+    {
+      "name": "record_spending",
+      "docs": [
+        "Record spending against a context (for tracking limits)"
+      ],
+      "discriminator": [
+        102,
+        59,
+        74,
+        219,
+        210,
+        124,
+        10,
+        235
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "root_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "context_identity",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  120,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "root_identity"
+              },
+              {
+                "kind": "account",
+                "path": "context_identity.context_index",
+                "account": "ContextIdentity"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "amount",
+          "type": "u64"
+        }
+      ]
+    },
+    {
+      "name": "revoke_context",
+      "docs": [
+        "Revoke a context (burn disposable identity after use)",
+        "Used after dark pool trade to eliminate trace"
+      ],
+      "discriminator": [
+        21,
+        161,
+        172,
+        79,
+        206,
+        75,
+        3,
+        77
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "root_identity",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        },
+        {
+          "name": "context_identity",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  99,
+                  111,
+                  110,
+                  116,
+                  101,
+                  120,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "root_identity"
+              },
+              {
+                "kind": "account",
+                "path": "context_identity.context_index",
+                "account": "ContextIdentity"
+              }
+            ]
+          }
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "update_privacy_level",
+      "docs": [
+        "Update privacy level for root identity"
+      ],
+      "discriminator": [
+        72,
+        67,
+        124,
+        120,
+        132,
+        204,
+        166,
+        36
+      ],
+      "accounts": [
+        {
+          "name": "user",
+          "writable": true,
+          "signer": true
+        },
+        {
+          "name": "root_identity",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  114,
+                  111,
+                  111,
+                  116
+                ]
+              },
+              {
+                "kind": "account",
+                "path": "user"
+              }
+            ]
+          }
+        }
+      ],
+      "args": [
+        {
+          "name": "new_privacy_level",
+          "type": "u8"
+        }
+      ]
+    }
+  ],
+  "accounts": [
+    {
+      "name": "ContextIdentity",
+      "discriminator": [
+        75,
+        52,
+        130,
+        219,
+        129,
+        144,
+        132,
+        7
+      ]
+    },
+    {
+      "name": "RootIdentity",
+      "discriminator": [
+        14,
+        116,
+        131,
+        27,
+        201,
+        209,
+        108,
+        52
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "ContextCreated",
+      "discriminator": [
+        22,
+        66,
+        41,
+        132,
+        76,
+        26,
+        231,
+        174
+      ]
+    },
+    {
+      "name": "ContextRevoked",
+      "discriminator": [
+        109,
+        83,
+        187,
+        252,
+        72,
+        7,
+        124,
+        125
+      ]
+    },
+    {
+      "name": "PrivacyLevelUpdated",
+      "discriminator": [
+        125,
+        68,
+        231,
+        197,
+        57,
+        77,
+        248,
+        161
+      ]
+    },
+    {
+      "name": "RootIdentityCreated",
+      "discriminator": [
+        206,
+        234,
+        178,
+        227,
+        211,
+        129,
+        158,
+        251
+      ]
+    },
+    {
+      "name": "SpendingRecorded",
+      "discriminator": [
+        243,
+        16,
+        218,
+        177,
+        69,
+        2,
+        91,
+        179
+      ]
+    }
+  ],
+  "errors": [
+    {
+      "code": 6000,
+      "name": "Unauthorized",
+      "msg": "Unauthorized: You don't own this identity"
+    },
+    {
+      "code": 6001,
+      "name": "ContextMismatch",
+      "msg": "Context mismatch: Context doesn't belong to this root"
+    },
+    {
+      "code": 6002,
+      "name": "ContextAlreadyRevoked",
+      "msg": "Context already revoked"
+    },
+    {
+      "code": 6003,
+      "name": "ContextRevoked",
+      "msg": "Context is revoked and cannot be used"
+    },
+    {
+      "code": 6004,
+      "name": "ExceedsTransactionLimit",
+      "msg": "Amount exceeds transaction limit for this context"
+    },
+    {
+      "code": 6005,
+      "name": "SpendingOverflow",
+      "msg": "Spending overflow: Total spent would exceed u64 max"
+    },
+    {
+      "code": 6006,
+      "name": "InvalidPrivacyLevel",
+      "msg": "Invalid privacy level: Must be 0-4"
+    },
+    {
+      "code": 6007,
+      "name": "InvalidContextType",
+      "msg": "Invalid context type: Must be 0-5"
+    }
+  ],
+  "types": [
+    {
+      "name": "ContextCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "root_identity",
+            "type": "pubkey"
+          },
+          {
+            "name": "context_identity",
+            "type": "pubkey"
+          },
+          {
+            "name": "context_type",
+            "type": "u8"
+          },
+          {
+            "name": "max_per_transaction",
+            "type": "u64"
+          },
+          {
+            "name": "context_index",
+            "type": "u16"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ContextIdentity",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "root_identity",
+            "type": "pubkey"
+          },
+          {
+            "name": "context_type",
+            "type": "u8"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "max_per_transaction",
+            "type": "u64"
+          },
+          {
+            "name": "total_spent",
+            "type": "u64"
+          },
+          {
+            "name": "revoked",
+            "type": "bool"
+          },
+          {
+            "name": "context_index",
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "ContextRevoked",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "root_identity",
+            "type": "pubkey"
+          },
+          {
+            "name": "context_identity",
+            "type": "pubkey"
+          },
+          {
+            "name": "context_type",
+            "type": "u8"
+          },
+          {
+            "name": "total_spent",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "PrivacyLevelUpdated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "root_identity",
+            "type": "pubkey"
+          },
+          {
+            "name": "old_level",
+            "type": "u8"
+          },
+          {
+            "name": "new_level",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RootIdentity",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "created_at",
+            "type": "i64"
+          },
+          {
+            "name": "privacy_level",
+            "type": "u8"
+          },
+          {
+            "name": "context_count",
+            "type": "u16"
+          },
+          {
+            "name": "bump",
+            "type": "u8"
+          }
+        ]
+      }
+    },
+    {
+      "name": "RootIdentityCreated",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "owner",
+            "type": "pubkey"
+          },
+          {
+            "name": "privacy_level",
+            "type": "u8"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    },
+    {
+      "name": "SpendingRecorded",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "context_identity",
+            "type": "pubkey"
+          },
+          {
+            "name": "amount",
+            "type": "u64"
+          },
+          {
+            "name": "total_spent",
+            "type": "u64"
+          },
+          {
+            "name": "timestamp",
+            "type": "i64"
+          }
+        ]
+      }
+    }
+  ]
+}
