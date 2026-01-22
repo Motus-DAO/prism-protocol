@@ -65,6 +65,59 @@ const proof = await noir.prove(encrypted, threshold);
 
 **Why it matters:** End-to-end encryption ensures even proof generation is private.
 
+## 🔐 Arcium MPC Integration
+
+**Prism Protocol is the first stack to combine Arcium MPC encryption with Noir ZK proofs and Solana contexts.**
+
+### The Arcium-First Approach
+
+Each encrypted balance is **cryptographically bound** to a disposable context identity. The dark pool sees only:
+- A commitment hash (from Arcium)
+- A ZK proof (from Noir)
+- A context address (from Solana)
+
+**The actual balance and root wallet remain completely hidden.**
+
+### Cryptographic Flow
+
+```
+User Wallet ($500K SOL)
+    ↓
+Context PDA Derivation → 9CyUh3VM... (disposable identity)
+    ↓
+Arcium MPC Encryption
+    ├── X25519 key agreement with MXE
+    ├── CSplRescueCipher encryption
+    ├── Commitment: H(balance || contextPubkey || nonce)
+    └── Guarantee: "Only decryptable with this specific context"
+    ↓
+Noir ZK Proof
+    ├── Private: encrypted balance (from Arcium)
+    ├── Public: threshold ($10K)
+    └── Proof: "Balance ≥ threshold" (without revealing)
+    ↓
+Dark Pool Verification
+    ├── Verify ZK proof
+    ├── Check Arcium commitment
+    └── Grant access (balance never revealed, context isolated)
+```
+
+### Why Context Binding Matters
+
+By including the `contextPubkey` in the Arcium commitment, we ensure:
+- **Context Isolation**: Each context has its own encryption
+- **Non-transferability**: A commitment from one context can't be used for another
+- **Binding Guarantee**: The commitment proves the balance was encrypted for THIS specific context
+
+### Technical Details
+
+- **X25519 Key Agreement**: Establishes shared secret with Arcium MXE
+- **CSplRescueCipher**: Arcium's threshold encryption cipher
+- **Commitment Generation**: `H(balance || contextPubkey || nonce)` for verification
+- **MPC Network**: Real Arcium multi-party computation (when configured)
+
+**See [ARCIUM_INTEGRATION_DEEP_DIVE.md](./packages/sdk/src/encryption/ARCIUM_INTEGRATION_DEEP_DIVE.md) for complete technical documentation.**
+
 ## 🎯 Primary Use Case: Dark Pool Trading
 
 ### The Demo Flow

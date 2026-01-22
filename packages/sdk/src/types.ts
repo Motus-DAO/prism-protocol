@@ -101,6 +101,8 @@ export interface CreateContextResult {
   signature: string;
   contextType: ContextType;
   contextIndex: number;
+  rootIdentityHash?: string;
+  encryptionCommitment?: string;
 }
 
 export interface RevokeContextResult {
