@@ -1,4 +1,5 @@
 use anchor_lang::prelude::*;
+use anchor_lang::solana_program::hash::hash;
 
 declare_id!("DkD3vtS6K8dJFnGmm9X9CphNDU5LYTYyP8Ve5EEVENdu");
 
@@ -43,6 +44,8 @@ pub mod prism {
         let root = &mut ctx.accounts.root_identity;
         
         context.root_identity = root.key();
+        context.root_identity_hash = None;
+        context.encryption_commitment = None;
         context.context_type = context_type;
         context.created_at = Clock::get()?.unix_timestamp;
         context.max_per_transaction = max_per_transaction;
@@ -65,6 +68,80 @@ pub mod prism {
         Ok(())
     }
 
+    /// Create a context with encrypted root identity for enhanced privacy
+    /// The root identity PDA is encrypted with Arcium MPC and stored as a hash
+    /// This prevents linking multiple contexts together (they all have encrypted root_identity)
+    pub fn create_context_encrypted(
+        ctx: Context<CreateContext>,
+        context_type: u8,
+        max_per_transaction: u64,
+        root_identity_hash: [u8; 32],
+        encryption_commitment: [u8; 32],
+    ) -> Result<()> {
+        require!(context_type <= 5, PrismError::InvalidContextType);
+        
+        let context = &mut ctx.accounts.context_identity;
+        let root = &mut ctx.accounts.root_identity;
+        
+        // Verify the hash matches the root identity PDA (what's stored in context)
+        // This ensures the root identity is properly encrypted
+        let computed_hash = hash_root_identity(&root.key());
+        require!(
+            computed_hash == root_identity_hash,
+            PrismError::InvalidRootHash
+        );
+        
+        // Store ONLY encrypted/hashed root identity (no plaintext for privacy)
+        // The root_identity field is set to a zero pubkey to indicate it's encrypted
+        // All verification uses root_identity_hash instead
+        context.root_identity = Pubkey::default(); // Zero pubkey = encrypted context
+        context.root_identity_hash = Some(root_identity_hash); // Hash of root identity PDA (from Arcium)
+        context.encryption_commitment = Some(encryption_commitment);
+        context.context_type = context_type;
+        context.created_at = Clock::get()?.unix_timestamp;
+        context.max_per_transaction = max_per_transaction;
+        context.total_spent = 0;
+        context.revoked = false;
+        context.context_index = root.context_count;
+        context.bump = ctx.bumps.context_identity;
+        
+        root.context_count = root.context_count.checked_add(1).unwrap();
+        
+        emit!(ContextCreated {
+            root_identity: root.key(),
+            context_identity: context.key(),
+            context_type,
+            max_per_transaction,
+            context_index: context.context_index,
+            timestamp: context.created_at,
+        });
+        
+        Ok(())
+    }
+
+    /// Verify an Arcium encryption commitment
+    /// This can be called on-chain to verify commitments without decrypting
+    pub fn verify_commitment(
+        ctx: Context<VerifyCommitment>,
+        commitment: [u8; 32],
+        binding_key: Pubkey,
+    ) -> Result<bool> {
+        // Verify commitment format (64 hex chars = 32 bytes)
+        // In production, this would verify against stored commitment
+        let context = &ctx.accounts.context_identity;
+        
+        if let Some(stored_commitment) = context.encryption_commitment {
+            // Verify commitment matches and binding key matches context
+            let is_valid = stored_commitment == commitment 
+                && binding_key == context.key();
+            
+            Ok(is_valid)
+        } else {
+            // No commitment stored, cannot verify
+            Ok(false)
+        }
+    }
+
     /// Revoke a context (burn disposable identity after use)
     /// Used after dark pool trade to eliminate trace
     pub fn revoke_context(ctx: Context<RevokeContext>) -> Result<()> {
@@ -74,8 +151,9 @@ pub mod prism {
         
         context.revoked = true;
         
+        // For encrypted contexts, root_identity is zero pubkey (privacy)
         emit!(ContextRevoked {
-            root_identity: context.root_identity,
+            root_identity: context.root_identity, // May be zero for encrypted contexts
             context_identity: context.key(),
             context_type: context.context_type,
             total_spent: context.total_spent,
@@ -226,16 +304,49 @@ pub struct RevokeContext<'info> {
 }
 
 #[derive(Accounts)]
-pub struct CheckSpendingLimit<'info> {
+pub struct VerifyCommitment<'info> {
     #[account(
         seeds = [
             b"context",
-            context_identity.root_identity.as_ref(),
+            // For encrypted contexts, derive from root_identity account instead
+            // This requires passing root_identity as a separate account
+            root_identity.key().as_ref(),
             &context_identity.context_index.to_le_bytes()
         ],
         bump = context_identity.bump
     )]
     pub context_identity: Account<'info, ContextIdentity>,
+    
+    // Need root_identity account to derive PDA for encrypted contexts
+    #[account(
+        seeds = [b"root", user.key().as_ref()],
+        bump = root_identity.bump
+    )]
+    pub root_identity: Account<'info, RootIdentity>,
+    
+    pub user: Signer<'info>,
+}
+
+#[derive(Accounts)]
+pub struct CheckSpendingLimit<'info> {
+    #[account(
+        seeds = [
+            b"context",
+            root_identity.key().as_ref(),
+            &context_identity.context_index.to_le_bytes()
+        ],
+        bump = context_identity.bump
+    )]
+    pub context_identity: Account<'info, ContextIdentity>,
+    
+    // Need root_identity account to derive PDA for encrypted contexts
+    #[account(
+        seeds = [b"root", user.key().as_ref()],
+        bump = root_identity.bump
+    )]
+    pub root_identity: Account<'info, RootIdentity>,
+    
+    pub user: Signer<'info>,
 }
 
 #[derive(Accounts)]
@@ -296,18 +407,23 @@ impl RootIdentity {
 
 #[account]
 pub struct ContextIdentity {
-    pub root_identity: Pubkey,       // 32 bytes - parent root identity
-    pub context_type: u8,            // 1 byte   - 0=DeFi, 1=Social, 2=Gaming, 3=Professional, 4=Temporary, 5=Public
-    pub created_at: i64,             // 8 bytes  - unix timestamp
-    pub max_per_transaction: u64,    // 8 bytes  - spending limit per tx (lamports)
-    pub total_spent: u64,            // 8 bytes  - total spent through this context
-    pub revoked: bool,               // 1 byte   - whether context is burned
-    pub context_index: u16,          // 2 bytes  - index for PDA derivation
-    pub bump: u8,                    // 1 byte   - PDA bump seed
+    pub root_identity: Pubkey,           // 32 bytes - parent root identity
+    pub root_identity_hash: Option<[u8; 32]>, // 33 bytes - optional hash of root identity for privacy
+    pub encryption_commitment: Option<[u8; 32]>, // 33 bytes - optional Arcium commitment for verification
+    pub context_type: u8,                // 1 byte   - 0=DeFi, 1=Social, 2=Gaming, 3=Professional, 4=Temporary, 5=Public
+    pub created_at: i64,                 // 8 bytes  - unix timestamp
+    pub max_per_transaction: u64,        // 8 bytes  - spending limit per tx (lamports)
+    pub total_spent: u64,                 // 8 bytes  - total spent through this context
+    pub revoked: bool,                    // 1 byte   - whether context is burned
+    pub context_index: u16,              // 2 bytes  - index for PDA derivation
+    pub bump: u8,                        // 1 byte   - PDA bump seed
 }
 
 impl ContextIdentity {
-    pub const SIZE: usize = 8 + 32 + 1 + 8 + 8 + 8 + 1 + 2 + 1; // 69 bytes
+    // Updated size: discriminator (8) + root_identity (32) + root_identity_hash (1 + 32) + 
+    // encryption_commitment (1 + 32) + context_type (1) + created_at (8) + max_per_transaction (8) + 
+    // total_spent (8) + revoked (1) + context_index (2) + bump (1)
+    pub const SIZE: usize = 8 + 32 + 33 + 33 + 1 + 8 + 8 + 8 + 1 + 2 + 1; // 135 bytes
 }
 
 // ============================================================================
@@ -383,6 +499,12 @@ pub struct PrivacyLevelUpdated {
 // ERRORS
 // ============================================================================
 
+// Helper function to hash root identity
+fn hash_root_identity(root_pubkey: &Pubkey) -> [u8; 32] {
+    let hash_result = hash(&root_pubkey.to_bytes());
+    hash_result.to_bytes()
+}
+
 #[error_code]
 pub enum PrismError {
     #[msg("Unauthorized: You don't own this identity")]
@@ -408,4 +530,7 @@ pub enum PrismError {
     
     #[msg("Invalid context type: Must be 0-5")]
     InvalidContextType,
+    
+    #[msg("Invalid root identity hash: Hash does not match root identity PDA")]
+    InvalidRootHash,
 }

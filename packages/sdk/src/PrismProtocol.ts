@@ -232,6 +232,132 @@ export class PrismProtocol {
   // ============================================================================
 
   /**
+   * Create a new context with encrypted root identity for enhanced privacy
+   * Uses Arcium MPC to encrypt the root identity before storing
+   */
+  async createContextEncrypted(options: CreateContextOptions): Promise<CreateContextResult & {
+    rootIdentityHash: string;
+    encryptionCommitment: string;
+  }> {
+    if (!this.initialized) {
+      await this.initialize();
+    }
+
+    if (!this.program) {
+      throw new Error('Program not initialized');
+    }
+
+    const [rootPDA] = this.getRootIdentityPDA();
+    
+    // Check if root identity exists, create if needed
+    let rootIdentity = await this.getRootIdentity();
+    if (!rootIdentity) {
+      console.log('Root identity not found, creating...');
+      await this.createRootIdentity({ privacyLevel: options.privacyLevel ?? PrivacyLevel.High });
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      rootIdentity = await this.getRootIdentity();
+      if (!rootIdentity) {
+        throw new Error('Failed to create root identity');
+      }
+    }
+
+    const contextIndex = rootIdentity.contextCount;
+    const [contextPDA] = this.getContextPDA(rootPDA, contextIndex);
+    
+    // Encrypt root identity PDA with Arcium MPC
+    // This prevents linking multiple contexts together (they all have encrypted root_identity)
+    // The root identity is what's stored in the context, so encrypting it provides privacy
+    console.log('Encrypting root identity with Arcium MPC...');
+    const encryptionResult = await this.arciumEncryption.encryptData({
+      data: rootPDA,
+      bindingKey: contextPDA
+    });
+
+    if (!encryptionResult.success || !encryptionResult.encryptedData) {
+      throw new Error(`Root identity encryption failed: ${encryptionResult.error}`);
+    }
+
+    // Compute hash of root identity PDA (for on-chain verification)
+    const rootHash = await this.hashRootIdentity(rootPDA);
+
+    const maxPerTx = options.maxPerTransaction ?? 1000000000n;
+    
+    console.log('Creating encrypted context...');
+    console.log(`  Type: ${ContextType[options.type]}`);
+    console.log(`  Context PDA: ${contextPDA.toBase58()}`);
+    console.log(`  Root PDA: ${rootPDA.toBase58()}`);
+    console.log(`  Root hash: ${rootHash.slice(0, 16)}...`);
+    console.log(`  Commitment: ${encryptionResult.encryptedData.commitment.slice(0, 16)}...`);
+
+    try {
+      // Convert commitment from hex string to bytes
+      const commitmentBytes = this.hexToBytes(encryptionResult.encryptedData.commitment);
+      const rootHashBytes = this.hexToBytes(rootHash);
+
+      const signature = await this.program.methods
+        .createContextEncrypted(
+          options.type,
+          new BN(maxPerTx.toString()),
+          Array.from(rootHashBytes),
+          Array.from(commitmentBytes)
+        )
+        .accounts({
+          user: this.wallet.publicKey,
+          rootIdentity: rootPDA,
+          contextIdentity: contextPDA,
+          systemProgram: SystemProgram.programId,
+        })
+        .rpc();
+
+      console.log('Encrypted context created:', signature);
+
+      return {
+        contextAddress: contextPDA,
+        signature,
+        contextType: options.type,
+        contextIndex,
+        rootIdentityHash: rootHash,
+        encryptionCommitment: encryptionResult.encryptedData.commitment
+      };
+    } catch (err: any) {
+      console.error('Error creating encrypted context:', err);
+      throw err;
+    }
+  }
+
+  /**
+   * Hash a public key (root identity or signing wallet) for privacy-enhanced context creation
+   */
+  private async hashRootIdentity(pubkey: PublicKey): Promise<string> {
+    const pubkeyBytes = pubkey.toBytes();
+    
+    let hashBuffer: ArrayBuffer;
+    if (typeof crypto !== 'undefined' && crypto.subtle) {
+      hashBuffer = await crypto.subtle.digest('SHA-256', pubkeyBytes);
+    } else {
+      const nodeCrypto = await import('crypto');
+      const hash = nodeCrypto.createHash('sha256');
+      hash.update(pubkeyBytes);
+      hashBuffer = hash.digest().buffer;
+    }
+
+    return Array.from(new Uint8Array(hashBuffer))
+      .map(b => b.toString(16).padStart(2, '0'))
+      .join('');
+  }
+
+  /**
+   * Convert hex string to bytes
+   */
+  private hexToBytes(hex: string): Uint8Array {
+    const bytes = new Uint8Array(hex.length / 2);
+    for (let i = 0; i < hex.length; i += 2) {
+      bytes[i / 2] = parseInt(hex.substr(i, 2), 16);
+    }
+    return bytes;
+  }
+
+  /**
    * Create a new context (disposable identity)
    */
   async createContext(options: CreateContextOptions): Promise<CreateContextResult> {

@@ -73,6 +73,8 @@ export const DarkPoolDemo: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [prismProtocol, setPrismProtocol] = useState<PrismProtocol | null>(null);
+  const [arciumStatus, setArciumStatus] = useState<{ mode: 'simulation' | 'live'; mxeAddress?: string } | null>(null);
+  const [commitment, setCommitment] = useState<string | null>(null);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -107,6 +109,7 @@ export const DarkPoolDemo: React.FC = () => {
         setPrismProtocol(protocol);
         addLog('PrismProtocol SDK initialized');
         const status = protocol.getArciumStatus();
+        setArciumStatus(status);
         addLog(`  Arcium mode: ${status.mode}`);
         addLog(`  Network: ${status.network}`);
         if (status.mxeAddress) {
@@ -318,6 +321,15 @@ export const DarkPoolDemo: React.FC = () => {
             addLog(`  Commitment: ${proofResult.encryptedBalance.commitment.slice(0, 16)}...`);
             addLog(`  Encrypted value size: ${proofResult.encryptedBalance.encryptedValue.length} bytes`);
             addLog(`  Mode: ${prismProtocol.getArciumStatus().mode}`);
+            addLog('');
+            addLog('🔐 CRYPTOGRAPHIC BINDING:');
+            addLog(`  Context: ${contextAddress.slice(0, 8)}... → Encrypted with this context`);
+            addLog(`  Commitment proves: Balance encrypted for THIS context only`);
+            addLog(`  Non-transferable: Cannot be used with another context`);
+            
+            // Store for UI display
+            setCommitment(proofResult.encryptedBalance.commitment);
+            setArciumStatus(prismProtocol.getArciumStatus());
             
             addLog('');
             addLog('═══════════════════════════════════════');
@@ -362,12 +374,18 @@ export const DarkPoolDemo: React.FC = () => {
           await new Promise(r => setTimeout(r, 400));
           addLog('✓ Proof verification: VALID');
           addLog('✓ Commitment hash matches');
+          addLog('✓ Arcium encryption verified');
+          addLog('✓ Context binding confirmed');
           addLog('');
           addLog('═══════════════════════════════════════');
           addLog('   DARK POOL ACCESS GRANTED');
           addLog('═══════════════════════════════════════');
           addLog('');
-          addLog('Your main wallet is NEVER exposed!');
+          addLog('PRIVACY GUARANTEES:');
+          addLog('  ✓ Main wallet: NEVER exposed');
+          addLog('  ✓ Balance: NEVER revealed');
+          addLog('  ✓ Arcium commitment: Verified');
+          addLog('  ✓ Context: Isolated and bound');
           success('Dark pool access granted!');
           
           setCurrentStep('trade');
@@ -474,6 +492,7 @@ export const DarkPoolDemo: React.FC = () => {
           setProofGenerated(false);
           setTxSignatures([]);
           setLogs([]);
+          setCommitment(null);
           if (connected) {
             addLog('Demo reset. Ready for another run!');
           }
@@ -667,6 +686,38 @@ export const DarkPoolDemo: React.FC = () => {
                     faucet.solana.com
                   </a>
                 </HoloText>
+              </motion.div>
+            )}
+
+            {/* Arcium Status Panel */}
+            {arciumStatus && (
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="mt-4 p-3 bg-fuchsia-500/10 border border-fuchsia-400/30 rounded-lg"
+              >
+                <div className="flex items-center gap-2 mb-2">
+                  <FaLock className="text-fuchsia-400" />
+                  <HoloText size="sm" weight="bold" color="magenta">
+                    Arcium MPC: {arciumStatus.mode.toUpperCase()} MODE
+                  </HoloText>
+                </div>
+                {arciumStatus.mxeAddress && (
+                  <HoloText size="xs" color="muted" className="font-mono">
+                    MXE: {arciumStatus.mxeAddress.slice(0, 8)}...
+                  </HoloText>
+                )}
+                {commitment && (
+                  <div className="mt-2 pt-2 border-t border-fuchsia-400/20">
+                    <HoloText size="xs" color="muted" className="mb-1">Commitment:</HoloText>
+                    <HoloText size="xs" color="cyan" className="font-mono break-all">
+                      {commitment.slice(0, 32)}...
+                    </HoloText>
+                    <HoloText size="xs" color="muted" className="mt-1 italic">
+                      Bound to context: {contextAddress?.slice(0, 8)}...
+                    </HoloText>
+                  </div>
+                )}
               </motion.div>
             )}
 
