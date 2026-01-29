@@ -18,3 +18,28 @@ export {
   type SolvencyProof,
   type PrismConfig
 } from './types';
+export {
+  PrismError,
+  PrismNetworkError,
+  PrismValidationError,
+  PrismProofError
+} from './errors';
+export {
+  validatePublicKey,
+  validateLamports,
+  validateContextType,
+  validatePrivacyLevel,
+  validateContextIndex
+} from './utils/validation';
+export {
+  getLogger,
+  setLogger,
+  createLogger,
+  LogLevel,
+  type Logger
+} from './utils/logger';
+export {
+  retry,
+  retryWithSimulation,
+  type RetryConfig
+} from './retry';

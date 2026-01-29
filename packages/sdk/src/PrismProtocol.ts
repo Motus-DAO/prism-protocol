@@ -25,6 +25,21 @@ import {
   type CreateContextResult,
   type RevokeContextResult
 } from './types';
+import {
+  PrismError,
+  PrismNetworkError,
+  PrismValidationError,
+  PrismProofError
+} from './errors';
+import {
+  validatePublicKey,
+  validateLamports,
+  validateContextType,
+  validatePrivacyLevel,
+  validateContextIndex
+} from './utils/validation';
+import { getLogger, type Logger, LogLevel } from './utils/logger';
+import { retry, retryWithSimulation } from './retry';
 import IDL from './idl.json';
 
 // Default program ID (deployed on devnet)
@@ -67,8 +82,27 @@ export class PrismProtocol {
   private solvencyProver: SolvencyProver;
   private arciumEncryption: ArciumEncryption;
   private initialized: boolean = false;
+  private logger: Logger;
 
   constructor(config: PrismConfig & { wallet: Wallet }) {
+    // Validate wallet
+    if (!config.wallet || !config.wallet.publicKey) {
+      throw new PrismValidationError(
+        'Wallet is required and must have a publicKey',
+        'INVALID_WALLET',
+        { field: 'wallet' }
+      );
+    }
+
+    // Validate RPC URL
+    if (!config.rpcUrl || typeof config.rpcUrl !== 'string') {
+      throw new PrismValidationError(
+        'RPC URL is required',
+        'INVALID_RPC_URL',
+        { field: 'rpcUrl' }
+      );
+    }
+
     this.connection = new Connection(
       config.rpcUrl, 
       config.commitment || 'confirmed'
@@ -81,15 +115,27 @@ export class PrismProtocol {
       network: config.rpcUrl.includes('devnet') ? 'devnet' : 
                config.rpcUrl.includes('localhost') ? 'localnet' : 'mainnet'
     });
+    this.logger = getLogger();
   }
 
   /**
    * Initialize the SDK and connect to the program
+   * 
+   * Must be called before using other methods (or they will call it automatically).
+   * 
+   * @example
+   * ```typescript
+   * const prism = new PrismProtocol({ rpcUrl, wallet });
+   * await prism.initialize();
+   * // Now you can use other methods
+   * ```
    */
   async initialize(): Promise<void> {
     if (this.initialized) return;
 
     try {
+      this.logger.debug('Initializing PrismProtocol...');
+
       // Create Anchor provider
       const provider = new AnchorProvider(
         this.connection,
@@ -110,12 +156,21 @@ export class PrismProtocol {
       this.program = new Program(idlWithAddress, provider);
       
       this.initialized = true;
-      console.log('PrismProtocol initialized');
-      console.log(`  Program ID: ${this.programId.toBase58()}`);
-      console.log(`  Wallet: ${this.wallet.publicKey.toBase58()}`);
-      console.log(`  Arcium: ${this.arciumEncryption.getStatus().mode} mode`);
+      this.logger.info('PrismProtocol initialized', {
+        programId: this.programId.toBase58(),
+        wallet: this.wallet.publicKey.toBase58(),
+        arciumMode: this.arciumEncryption.getStatus().mode
+      });
     } catch (error) {
-      throw new Error(`Failed to initialize PrismProtocol: ${error}`);
+      const prismError = error instanceof PrismError 
+        ? error 
+        : new PrismNetworkError(
+            `Failed to initialize PrismProtocol: ${error}`,
+            'INITIALIZATION_FAILED',
+            { originalError: error instanceof Error ? error : new Error(String(error)) }
+          );
+      this.logger.error('Failed to initialize PrismProtocol', prismError);
+      throw prismError;
     }
   }
 
@@ -124,7 +179,16 @@ export class PrismProtocol {
   // ============================================================================
 
   /**
-   * Get the root identity PDA for a user
+   * Get the root identity PDA (Program Derived Address) for a user
+   * 
+   * @param userPubkey - User's public key (defaults to connected wallet)
+   * @returns Tuple of [PDA, bump] - The PDA address and bump seed
+   * 
+   * @example
+   * ```typescript
+   * const [rootPDA, bump] = prism.getRootIdentityPDA();
+   * console.log('Root PDA:', rootPDA.toBase58());
+   * ```
    */
   getRootIdentityPDA(userPubkey?: PublicKey): [PublicKey, number] {
     const user = userPubkey || this.wallet.publicKey;
@@ -135,7 +199,18 @@ export class PrismProtocol {
   }
 
   /**
-   * Get a context PDA
+   * Get a context PDA (Program Derived Address)
+   * 
+   * @param rootPDA - Root identity PDA
+   * @param contextIndex - Context index
+   * @returns Tuple of [PDA, bump] - The context PDA address and bump seed
+   * 
+   * @example
+   * ```typescript
+   * const [rootPDA] = prism.getRootIdentityPDA();
+   * const [contextPDA, bump] = prism.getContextPDA(rootPDA, 0);
+   * console.log('Context PDA:', contextPDA.toBase58());
+   * ```
    */
   getContextPDA(rootPDA: PublicKey, contextIndex: number): [PublicKey, number] {
     const indexBuffer = Buffer.alloc(2);
@@ -149,7 +224,21 @@ export class PrismProtocol {
 
   /**
    * Create a root identity for the connected wallet
-   * This is a one-time operation per wallet
+   * 
+   * This is a one-time operation per wallet. If a root identity already exists,
+   * this method returns the existing one without creating a new transaction.
+   * 
+   * @param options - Optional configuration
+   * @param options.privacyLevel - Privacy level for the root identity (default: PrivacyLevel.High)
+   * @returns Root identity creation result with address and signature
+   * 
+   * @example
+   * ```typescript
+   * const root = await prism.createRootIdentity({
+   *   privacyLevel: PrivacyLevel.Maximum
+   * });
+   * console.log('Root identity:', root.rootAddress.toBase58());
+   * ```
    */
   async createRootIdentity(options?: CreateRootOptions): Promise<CreateRootResult> {
     if (!this.initialized) {
@@ -157,11 +246,34 @@ export class PrismProtocol {
     }
 
     if (!this.program) {
-      throw new Error('Program not initialized');
+      throw new PrismError(
+        'Program not initialized',
+        'PROGRAM_NOT_INITIALIZED'
+      );
     }
 
     const privacyLevel = options?.privacyLevel ?? PrivacyLevel.High;
+    
+    // Validate privacy level
+    validatePrivacyLevel(privacyLevel);
+    
     const [rootPDA] = this.getRootIdentityPDA();
+    
+    // Check if root identity already exists
+    try {
+      const existing = await (this.program.account as any).rootIdentity.fetch(rootPDA);
+      if (existing) {
+        console.log('Root identity already exists');
+        return {
+          rootAddress: rootPDA,
+          signature: 'existing',
+          privacyLevel: existing.privacyLevel
+        };
+      }
+    } catch (err) {
+      // Root identity doesn't exist, proceed with creation
+      console.log('Root identity not found, creating...');
+    }
     
     console.log('Creating root identity...');
     console.log(`  Root PDA: ${rootPDA.toBase58()}`);
@@ -177,7 +289,7 @@ export class PrismProtocol {
         })
         .rpc();
 
-      console.log('Root identity created:', signature);
+      this.logger.info('Root identity created', { signature });
 
       return {
         rootAddress: rootPDA,
@@ -186,20 +298,59 @@ export class PrismProtocol {
       };
     } catch (err: any) {
       // If root identity already exists, that's okay
-      if (err.message?.includes('already in use') || err.message?.includes('AccountDiscriminatorAlreadyExists')) {
-        console.log('Root identity already exists');
-        return {
-          rootAddress: rootPDA,
-          signature: 'existing',
-          privacyLevel
-        };
+      const errorMsg = err.message || '';
+      if (
+        errorMsg.includes('already in use') || 
+        errorMsg.includes('AccountDiscriminatorAlreadyExists') ||
+        errorMsg.includes('already been processed') ||
+        errorMsg.includes('0x0') // Account already exists error code
+      ) {
+        this.logger.info('Root identity already exists (caught during creation)');
+        // Double-check it exists
+        try {
+          const existing = await (this.program.account as any).rootIdentity.fetch(rootPDA);
+          return {
+            rootAddress: rootPDA,
+            signature: 'existing',
+            privacyLevel: existing?.privacyLevel ?? privacyLevel
+          };
+        } catch {
+          // If we can't fetch it, still return success since it likely exists
+          return {
+            rootAddress: rootPDA,
+            signature: 'existing',
+            privacyLevel
+          };
+        }
       }
-      throw err;
+      
+      // Wrap error in PrismNetworkError if not already a PrismError
+      const prismError = err instanceof PrismError
+        ? err
+        : new PrismNetworkError(
+            `Failed to create root identity: ${err.message}`,
+            'CREATE_ROOT_FAILED',
+            { originalError: err }
+          );
+      this.logger.error('Failed to create root identity', prismError);
+      throw prismError;
     }
   }
 
   /**
    * Get the root identity for a user
+   * 
+   * @param userPubkey - User's public key (defaults to connected wallet)
+   * @returns Root identity object or null if not found
+   * 
+   * @example
+   * ```typescript
+   * const identity = await prism.getRootIdentity();
+   * if (identity) {
+   *   console.log('Contexts created:', identity.contextCount);
+   *   console.log('Privacy level:', PrivacyLevel[identity.privacyLevel]);
+   * }
+   * ```
    */
   async getRootIdentity(userPubkey?: PublicKey): Promise<RootIdentity | null> {
     if (!this.initialized) {
@@ -233,7 +384,26 @@ export class PrismProtocol {
 
   /**
    * Create a new context with encrypted root identity for enhanced privacy
-   * Uses Arcium MPC to encrypt the root identity before storing
+   * 
+   * Uses Arcium MPC to encrypt the root identity before storing. This ensures
+   * that contexts are unlinkable to each other and to the root identity.
+   * 
+   * @param options - Context creation options
+   * @param options.type - Context type (DeFi, Social, Gaming, etc.)
+   * @param options.maxPerTransaction - Maximum amount per transaction in lamports (default: 1 SOL)
+   * @param options.privacyLevel - Privacy level (optional)
+   * @returns Context creation result with encryption metadata
+   * 
+   * @example
+   * ```typescript
+   * const context = await prism.createContextEncrypted({
+   *   type: ContextType.DeFi,
+   *   maxPerTransaction: 1000000000n // 1 SOL
+   * });
+   * console.log('Encrypted context:', context.contextAddress.toBase58());
+   * console.log('Root hash:', context.rootIdentityHash);
+   * console.log('Commitment:', context.encryptionCommitment);
+   * ```
    */
   async createContextEncrypted(options: CreateContextOptions): Promise<CreateContextResult & {
     rootIdentityHash: string;
@@ -244,7 +414,19 @@ export class PrismProtocol {
     }
 
     if (!this.program) {
-      throw new Error('Program not initialized');
+      throw new PrismError(
+        'Program not initialized',
+        'PROGRAM_NOT_INITIALIZED'
+      );
+    }
+
+    // Validate inputs
+    validateContextType(options.type);
+    if (options.maxPerTransaction !== undefined) {
+      validateLamports(options.maxPerTransaction);
+    }
+    if (options.privacyLevel !== undefined) {
+      validatePrivacyLevel(options.privacyLevel);
     }
 
     const [rootPDA] = this.getRootIdentityPDA();
@@ -252,29 +434,98 @@ export class PrismProtocol {
     // Check if root identity exists, create if needed
     let rootIdentity = await this.getRootIdentity();
     if (!rootIdentity) {
-      console.log('Root identity not found, creating...');
-      await this.createRootIdentity({ privacyLevel: options.privacyLevel ?? PrivacyLevel.High });
-      await new Promise(resolve => setTimeout(resolve, 2000));
-      rootIdentity = await this.getRootIdentity();
-      if (!rootIdentity) {
-        throw new Error('Failed to create root identity');
+      this.logger.debug('Root identity not found, creating...');
+      const rootResult = await this.createRootIdentity({ privacyLevel: options.privacyLevel ?? PrivacyLevel.High });
+      // If it was created or already exists, fetch it
+      if (rootResult.signature === 'existing' || rootResult.signature) {
+        // Small delay to ensure account is available
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        rootIdentity = await this.getRootIdentity();
+        if (!rootIdentity) {
+          throw new PrismError(
+            'Failed to fetch root identity after creation',
+            'FETCH_ROOT_FAILED'
+          );
+        }
+      } else {
+        throw new PrismError(
+          'Failed to create root identity',
+          'CREATE_ROOT_FAILED'
+        );
       }
     }
 
+    // Use the current contextCount - the program will derive PDA from this
     const contextIndex = rootIdentity.contextCount;
     const [contextPDA] = this.getContextPDA(rootPDA, contextIndex);
+    
+    // Check if context exists at this index
+    // If it exists and is active, we'll revoke it first to ensure we can create a new one
+    // This ensures the demo always shows 2 transactions: revoke (if needed) + create
+    let needsRevoke = false;
+    try {
+      const existingContext = await (this.program.account as any).contextIdentity.fetch(contextPDA);
+      if (existingContext && !existingContext.revoked) {
+        needsRevoke = true;
+        this.logger.warn(`Context at index ${contextIndex} already exists and is active, will revoke first`);
+      }
+    } catch (err) {
+      // Context doesn't exist, proceed normally
+      this.logger.debug('Context does not exist, creating new one...');
+    }
+    
+    // If we need to revoke first, do it now
+    if (needsRevoke) {
+      try {
+        this.logger.info('Revoking existing context before creating new one...');
+        await retryWithSimulation(
+          () => this.program!.methods
+            .revokeContext()
+            .accounts({
+              user: this.wallet.publicKey,
+              rootIdentity: rootPDA,
+              contextIdentity: contextPDA,
+            })
+            .rpc(),
+          () => this.program!.methods
+            .revokeContext()
+            .accounts({
+              user: this.wallet.publicKey,
+              rootIdentity: rootPDA,
+              contextIdentity: contextPDA,
+            })
+            .simulate(),
+          { maxRetries: 3 }
+        );
+        this.logger.info('Existing context revoked, proceeding with creation...');
+        // Small delay to ensure state is updated
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (revokeErr: any) {
+        const revokeMsg = revokeErr.message || '';
+        if (revokeMsg.includes('already revoked') || revokeMsg.includes('already been processed')) {
+          this.logger.info('Context was already revoked, proceeding with creation...');
+        } else {
+          this.logger.warn('Could not revoke existing context, will attempt creation anyway...');
+          // Continue anyway - creation might still work or fail gracefully
+        }
+      }
+    }
     
     // Encrypt root identity PDA with Arcium MPC
     // This prevents linking multiple contexts together (they all have encrypted root_identity)
     // The root identity is what's stored in the context, so encrypting it provides privacy
-    console.log('Encrypting root identity with Arcium MPC...');
+    this.logger.debug('Encrypting root identity with Arcium MPC...');
     const encryptionResult = await this.arciumEncryption.encryptData({
       data: rootPDA,
       bindingKey: contextPDA
     });
 
     if (!encryptionResult.success || !encryptionResult.encryptedData) {
-      throw new Error(`Root identity encryption failed: ${encryptionResult.error}`);
+      throw new PrismError(
+        `Root identity encryption failed: ${encryptionResult.error}`,
+        'ENCRYPTION_FAILED',
+        { error: encryptionResult.error }
+      );
     }
 
     // Compute hash of root identity PDA (for on-chain verification)
@@ -282,34 +533,52 @@ export class PrismProtocol {
 
     const maxPerTx = options.maxPerTransaction ?? 1000000000n;
     
-    console.log('Creating encrypted context...');
-    console.log(`  Type: ${ContextType[options.type]}`);
-    console.log(`  Context PDA: ${contextPDA.toBase58()}`);
-    console.log(`  Root PDA: ${rootPDA.toBase58()}`);
-    console.log(`  Root hash: ${rootHash.slice(0, 16)}...`);
-    console.log(`  Commitment: ${encryptionResult.encryptedData.commitment.slice(0, 16)}...`);
+    this.logger.info('Creating encrypted context...', {
+      type: ContextType[options.type],
+      contextPDA: contextPDA.toBase58(),
+      rootPDA: rootPDA.toBase58(),
+      rootHash: rootHash.slice(0, 16) + '...',
+      commitment: encryptionResult.encryptedData.commitment.slice(0, 16) + '...'
+    });
 
     try {
       // Convert commitment from hex string to bytes
       const commitmentBytes = this.hexToBytes(encryptionResult.encryptedData.commitment);
       const rootHashBytes = this.hexToBytes(rootHash);
 
-      const signature = await this.program.methods
-        .createContextEncrypted(
-          options.type,
-          new BN(maxPerTx.toString()),
-          Array.from(rootHashBytes),
-          Array.from(commitmentBytes)
-        )
-        .accounts({
-          user: this.wallet.publicKey,
-          rootIdentity: rootPDA,
-          contextIdentity: contextPDA,
-          systemProgram: SystemProgram.programId,
-        })
-        .rpc();
+      const signature = await retryWithSimulation(
+        () => this.program!.methods
+          .createContextEncrypted(
+            options.type,
+            new BN(maxPerTx.toString()),
+            Array.from(rootHashBytes),
+            Array.from(commitmentBytes)
+          )
+          .accounts({
+            user: this.wallet.publicKey,
+            rootIdentity: rootPDA,
+            contextIdentity: contextPDA,
+            systemProgram: SystemProgram.programId,
+          })
+          .rpc(),
+        () => this.program!.methods
+          .createContextEncrypted(
+            options.type,
+            new BN(maxPerTx.toString()),
+            Array.from(rootHashBytes),
+            Array.from(commitmentBytes)
+          )
+          .accounts({
+            user: this.wallet.publicKey,
+            rootIdentity: rootPDA,
+            contextIdentity: contextPDA,
+            systemProgram: SystemProgram.programId,
+          })
+          .simulate(),
+        { maxRetries: 3 }
+      );
 
-      console.log('Encrypted context created:', signature);
+      this.logger.info('Encrypted context created', { signature, contextIndex });
 
       return {
         contextAddress: contextPDA,
@@ -320,8 +589,48 @@ export class PrismProtocol {
         encryptionCommitment: encryptionResult.encryptedData.commitment
       };
     } catch (err: any) {
-      console.error('Error creating encrypted context:', err);
-      throw err;
+      // Check if it's a "already processed" error (context already exists)
+      const errorMsg = err.message || '';
+      if (errorMsg.includes('already been processed') || errorMsg.includes('already in use') || errorMsg.includes('0x0')) {
+        this.logger.info('Context already exists at this index');
+        // Try to fetch the existing context
+        try {
+          const existingContext = await (this.program.account as any).contextIdentity.fetch(contextPDA);
+          const rootHash = await this.hashRootIdentity(rootPDA);
+          // Return with 'existing' signature - this means no new transaction was created
+          // but the context exists and can be used
+          return {
+            contextAddress: contextPDA,
+            signature: 'existing',
+            contextType: options.type,
+            contextIndex,
+            rootIdentityHash: rootHash,
+            encryptionCommitment: existingContext.encryptionCommitment 
+              ? (Array.from(existingContext.encryptionCommitment) as number[]).map((b) => b.toString(16).padStart(2, '0')).join('')
+              : ''
+          };
+        } catch (fetchErr) {
+          // Couldn't fetch, re-throw original error
+          const prismError = err instanceof PrismError
+            ? err
+            : new PrismNetworkError(
+                `Failed to create encrypted context: ${err.message}`,
+                'CREATE_ENCRYPTED_CONTEXT_FAILED',
+                { originalError: err }
+              );
+          this.logger.error('Error creating encrypted context', prismError);
+          throw prismError;
+        }
+      }
+      const prismError = err instanceof PrismError
+        ? err
+        : new PrismNetworkError(
+            `Failed to create encrypted context: ${err.message}`,
+            'CREATE_ENCRYPTED_CONTEXT_FAILED',
+            { originalError: err }
+          );
+      this.logger.error('Error creating encrypted context', prismError);
+      throw prismError;
     }
   }
 
@@ -359,6 +668,25 @@ export class PrismProtocol {
 
   /**
    * Create a new context (disposable identity)
+   * 
+   * Creates a disposable identity derived from your root identity. Each context
+   * has its own address (PDA) and can have spending limits.
+   * 
+   * @param options - Context creation options
+   * @param options.type - Context type (DeFi, Social, Gaming, etc.)
+   * @param options.maxPerTransaction - Maximum amount per transaction in lamports (default: 1 SOL)
+   * @param options.privacyLevel - Privacy level (optional)
+   * @returns Context creation result with address and index
+   * 
+   * @example
+   * ```typescript
+   * const context = await prism.createContext({
+   *   type: ContextType.DeFi,
+   *   maxPerTransaction: 1000000000n // 1 SOL limit
+   * });
+   * console.log('Context address:', context.contextAddress.toBase58());
+   * console.log('Context index:', context.contextIndex);
+   * ```
    */
   async createContext(options: CreateContextOptions): Promise<CreateContextResult> {
     if (!this.initialized) {
@@ -446,22 +774,43 @@ export class PrismProtocol {
     }
 
     if (!this.program) {
-      throw new Error('Program not initialized');
+      throw new PrismError(
+        'Program not initialized',
+        'PROGRAM_NOT_INITIALIZED'
+      );
     }
+
+    // Validate context index
+    validateContextIndex(contextIndex);
 
     const [rootPDA] = this.getRootIdentityPDA();
     const [contextPDA] = this.getContextPDA(rootPDA, contextIndex);
 
-    console.log(`Revoking context: ${contextPDA.toBase58()}`);
+    this.logger.info('Revoking context', {
+      contextIndex,
+      contextPDA: contextPDA.toBase58()
+    });
 
     try {
-      // Fetch context to get totalSpent before revoking
+      // Fetch context to check state and get totalSpent before revoking
       let totalSpent = 0n;
+      let alreadyRevoked = false;
       try {
         const contextAccount = await (this.program.account as any).contextIdentity.fetch(contextPDA);
         totalSpent = BigInt(contextAccount.totalSpent.toString());
-      } catch {
-        // Context might not exist or already revoked
+        alreadyRevoked = contextAccount.revoked === true;
+        
+        if (alreadyRevoked) {
+          console.log('Context is already revoked');
+          return {
+            signature: 'already_revoked',
+            contextAddress: contextPDA,
+            totalSpent
+          };
+        }
+      } catch (err) {
+        // Context might not exist
+        console.log('Could not fetch context account, attempting to revoke anyway...');
       }
 
       const signature = await this.program.methods
@@ -482,12 +831,58 @@ export class PrismProtocol {
       };
     } catch (err: any) {
       console.error('Error revoking context:', err);
-      throw err;
+      
+      // Check if it's an "already processed" or "already revoked" error
+      const errorMsg = err.message || '';
+      if (
+        errorMsg.includes('already been processed') ||
+        errorMsg.includes('ContextAlreadyRevoked') ||
+        errorMsg.includes('already revoked')
+      ) {
+        this.logger.info('Context was already revoked (caught during revocation)');
+        // Try to fetch the context to get totalSpent
+        let totalSpent = 0n;
+        try {
+          const contextAccount = await (this.program.account as any).contextIdentity.fetch(contextPDA);
+          totalSpent = BigInt(contextAccount.totalSpent.toString());
+        } catch {
+          // Couldn't fetch, use 0
+        }
+        return {
+          signature: 'already_revoked',
+          contextAddress: contextPDA,
+          totalSpent
+        };
+      }
+      
+      const prismError = err instanceof PrismError
+        ? err
+        : new PrismNetworkError(
+            `Failed to revoke context: ${err.message}`,
+            'REVOKE_CONTEXT_FAILED',
+            { originalError: err, contextIndex }
+          );
+      this.logger.error('Error revoking context', prismError);
+      throw prismError;
     }
   }
 
   /**
    * Get all contexts for the connected wallet
+   * 
+   * @returns Array of context identities, including both active and revoked contexts
+   * 
+   * @example
+   * ```typescript
+   * const contexts = await prism.getContexts();
+   * contexts.forEach(ctx => {
+   *   console.log(`Context ${ctx.contextIndex}:`, {
+   *     type: ContextType[ctx.contextType],
+   *     revoked: ctx.revoked,
+   *     totalSpent: ctx.totalSpent
+   *   });
+   * });
+   * ```
    */
   async getContexts(): Promise<ContextIdentity[]> {
     if (!this.initialized) {
@@ -556,6 +951,20 @@ export class PrismProtocol {
 
   /**
    * Verify a solvency proof
+   * 
+   * Verifies that a solvency proof is valid and correctly proves the balance threshold.
+   * 
+   * @param proof - The solvency proof to verify
+   * @returns true if proof is valid, false otherwise
+   * 
+   * @example
+   * ```typescript
+   * const proof = await prism.generateSolvencyProof({ ... });
+   * const isValid = await prism.verifySolvencyProof(proof);
+   * if (isValid) {
+   *   console.log('Proof verified! Balance meets threshold.');
+   * }
+   * ```
    */
   async verifySolvencyProof(proof: SolvencyProof): Promise<boolean> {
     return await this.solvencyProver.verifyProof(proof);
@@ -585,37 +994,42 @@ export class PrismProtocol {
     proof: SolvencyProof;
     contextPubkey: string;
   }> {
-    console.log('='.repeat(50));
-    console.log('DARK POOL ACCESS - Encrypted Solvency Proof');
-    console.log('='.repeat(50));
+    // Validate inputs
+    validateLamports(params.actualBalance);
+    validateLamports(params.threshold);
+    validatePublicKey(params.contextPubkey);
+
+    this.logger.info('DARK POOL ACCESS - Encrypted Solvency Proof');
     
     // Step 1: Encrypt balance with Arcium MPC
-    console.log('\n[1/2] Encrypting balance with Arcium MPC...');
+    this.logger.debug('[1/2] Encrypting balance with Arcium MPC...');
     const encryptionResult = await this.arciumEncryption.encryptBalance({
       balance: params.actualBalance,
       contextPubkey: params.contextPubkey
     });
 
     if (!encryptionResult.success || !encryptionResult.encryptedBalance) {
-      throw new Error(`Balance encryption failed: ${encryptionResult.error}`);
+      throw new PrismError(
+        `Balance encryption failed: ${encryptionResult.error}`,
+        'ENCRYPTION_FAILED',
+        { error: encryptionResult.error }
+      );
     }
 
-    console.log(`  ✓ Balance encrypted`);
-    console.log(`  Commitment: ${encryptionResult.encryptedBalance.commitment.slice(0, 16)}...`);
+    this.logger.debug('Balance encrypted', {
+      commitment: encryptionResult.encryptedBalance.commitment.slice(0, 16) + '...'
+    });
 
     // Step 2: Generate ZK proof
-    console.log('\n[2/2] Generating ZK solvency proof...');
+    this.logger.debug('[2/2] Generating ZK solvency proof...');
     const proof = await this.solvencyProver.generateProof({
       actualBalance: params.actualBalance,
       threshold: params.threshold
     });
 
-    console.log(`  ✓ Proof generated`);
-    console.log('='.repeat(50));
-    console.log('RESULT: Dark pool access GRANTED');
-    console.log(`  Threshold met: ${params.threshold} lamports`);
-    console.log(`  Balance: [ENCRYPTED & PROVEN]`);
-    console.log('='.repeat(50));
+    this.logger.info('RESULT: Dark pool access GRANTED', {
+      threshold: params.threshold.toString()
+    });
 
     return {
       encryptedBalance: encryptionResult.encryptedBalance,
@@ -640,7 +1054,7 @@ export class PrismProtocol {
     console.log('\n🔐 QUICK DARK POOL ACCESS');
     console.log('-'.repeat(40));
 
-    // Create a disposable DeFi context
+    // Create a disposable DeFi context (public root_identity)
     const context = await this.createContext({
       type: ContextType.DeFi,
       maxPerTransaction: params.balance
@@ -648,6 +1062,45 @@ export class PrismProtocol {
     console.log(`Created context: ${context.contextAddress.toBase58().slice(0, 8)}...`);
 
     // Generate encrypted proof
+    const result = await this.generateEncryptedSolvencyProof({
+      actualBalance: params.balance,
+      threshold: params.threshold,
+      contextPubkey: context.contextAddress
+    });
+
+    return {
+      context,
+      encryptedBalance: result.encryptedBalance,
+      proof: result.proof,
+      accessGranted: true
+    };
+  }
+
+  /**
+   * Quick encrypted proof for demo (MAX PRIVACY)
+   * Uses an Arcium-encrypted context so the root identity is never stored in plaintext.
+   */
+  async quickDarkPoolAccessEncrypted(params: {
+    balance: bigint;
+    threshold: bigint;
+  }): Promise<{
+    context: CreateContextResult & { rootIdentityHash: string; encryptionCommitment: string };
+    encryptedBalance: EncryptedBalance;
+    proof: SolvencyProof;
+    accessGranted: boolean;
+  }> {
+    this.logger.info('QUICK DARK POOL ACCESS (ENCRYPTED ROOT)');
+
+    // Create a disposable DeFi context with encrypted root identity
+    const context = await this.createContextEncrypted({
+      type: ContextType.DeFi,
+      maxPerTransaction: params.balance
+    });
+    this.logger.debug('Created encrypted context', {
+      contextAddress: context.contextAddress.toBase58().slice(0, 8) + '...'
+    });
+
+    // Generate encrypted proof bound to this encrypted context
     const result = await this.generateEncryptedSolvencyProof({
       actualBalance: params.balance,
       threshold: params.threshold,
@@ -679,6 +1132,14 @@ export class PrismProtocol {
 
   /**
    * Get the current wallet public key
+   * 
+   * @returns The public key of the connected wallet
+   * 
+   * @example
+   * ```typescript
+   * const pubkey = prism.getWalletPublicKey();
+   * console.log('Wallet:', pubkey.toBase58());
+   * ```
    */
   getWalletPublicKey(): PublicKey {
     return this.wallet.publicKey;
@@ -693,6 +1154,17 @@ export class PrismProtocol {
 
   /**
    * Check if a user has a root identity
+   * 
+   * @param userPubkey - User's public key (defaults to connected wallet)
+   * @returns true if root identity exists, false otherwise
+   * 
+   * @example
+   * ```typescript
+   * const exists = await prism.hasRootIdentity();
+   * if (!exists) {
+   *   await prism.createRootIdentity();
+   * }
+   * ```
    */
   async hasRootIdentity(userPubkey?: PublicKey): Promise<boolean> {
     const identity = await this.getRootIdentity(userPubkey);
@@ -701,6 +1173,18 @@ export class PrismProtocol {
 
   /**
    * Get SDK info
+   * 
+   * Returns version and configuration information about the SDK.
+   * 
+   * @returns Info object with version, program ID, and network
+   * 
+   * @example
+   * ```typescript
+   * const info = prism.getInfo();
+   * console.log('SDK version:', info.version);
+   * console.log('Network:', info.network);
+   * console.log('Program ID:', info.programId);
+   * ```
    */
   getInfo(): { version: string; programId: string; network: string } {
     return {

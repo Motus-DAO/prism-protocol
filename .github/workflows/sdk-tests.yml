@@ -1,0 +1,55 @@
+name: SDK Tests
+
+on:
+  push:
+    branches: [main, master, develop]
+    paths:
+      - 'packages/sdk/**'
+      - '.github/workflows/sdk-tests.yml'
+  pull_request:
+    branches: [main, master, develop]
+    paths:
+      - 'packages/sdk/**'
+      - '.github/workflows/sdk-tests.yml'
+
+jobs:
+  test:
+    name: Test SDK
+    runs-on: ubuntu-latest
+    
+    strategy:
+      matrix:
+        node-version: [18.x, 20.x]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+      
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: packages/sdk/package-lock.json
+      
+      - name: Install dependencies
+        working-directory: packages/sdk
+        run: npm ci
+      
+      - name: Run tests
+        working-directory: packages/sdk
+        run: npm test
+      
+      - name: Generate coverage report
+        working-directory: packages/sdk
+        run: npm run test:coverage
+        continue-on-error: true
+      
+      - name: Upload coverage to Codecov (optional)
+        uses: codecov/codecov-action@v4
+        with:
+          file: ./packages/sdk/coverage/lcov.info
+          flags: sdk
+          name: sdk-coverage
+          fail_ci_if_error: false
+        continue-on-error: true

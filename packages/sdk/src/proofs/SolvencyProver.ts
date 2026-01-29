@@ -34,7 +34,7 @@ export class SolvencyProver {
     if (this.initialized) return;
 
     // Check if we're in a browser environment (WASM requires browser APIs)
-    if (typeof window === 'undefined') {
+    if (typeof (globalThis as any).window === 'undefined') {
       console.log('SolvencyProver: Server-side environment detected, using simulation mode');
       this.initialized = true;
       this.useMockMode = true;
@@ -116,7 +116,7 @@ export class SolvencyProver {
    */
   private async loadCircuit(): Promise<any> {
     // Browser/Next.js environment - try to fetch or import
-    if (typeof window !== 'undefined' || (typeof process !== 'undefined' && process.env.NEXT_RUNTIME)) {
+    if (typeof (globalThis as any).window !== 'undefined' || (typeof process !== 'undefined' && process.env.NEXT_RUNTIME)) {
       // Browser or Next.js client-side
       try {
         // Try fetching from public folder (if copied there)
