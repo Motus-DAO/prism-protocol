@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import dynamic from "next/dynamic";
 import { useWallet, useConnection } from "@solana/wallet-adapter-react";
@@ -73,8 +73,11 @@ export const DarkPoolDemo: React.FC = () => {
   const [showSuccess, setShowSuccess] = useState(false);
   const [isLoadingBalance, setIsLoadingBalance] = useState(false);
   const [prismProtocol, setPrismProtocol] = useState<PrismProtocol | null>(null);
-  const [arciumStatus, setArciumStatus] = useState<{ mode: 'simulation' | 'live'; mxeAddress?: string } | null>(null);
+  const [arciumStatus, setArciumStatus] = useState<{ initialized: boolean; mode: 'simulation' | 'live'; network: string } | null>(null);
   const [commitment, setCommitment] = useState<string | null>(null);
+  const [hasLoggedExistingRoot, setHasLoggedExistingRoot] = useState(false);
+  const [isAtBottom, setIsAtBottom] = useState(true);
+  const terminalRef = useRef<HTMLDivElement | null>(null);
 
   const addLog = useCallback((message: string) => {
     const timestamp = new Date().toLocaleTimeString();
@@ -112,9 +115,7 @@ export const DarkPoolDemo: React.FC = () => {
         setArciumStatus(status);
         addLog(`  Arcium mode: ${status.mode}`);
         addLog(`  Network: ${status.network}`);
-        if (status.mxeAddress) {
-          addLog(`  MXE: ${status.mxeAddress.slice(0, 8)}...`);
-        }
+        // MXE address (if any) is logged inside the SDK
       }).catch((err) => {
         console.error('Failed to initialize PrismProtocol:', err);
         addLog(`WARNING: PrismProtocol init failed: ${err.message}`);
@@ -158,16 +159,17 @@ export const DarkPoolDemo: React.FC = () => {
     }
   }, [connected, publicKey, connection, currentStep, addLog, info, error]);
 
-  // Check for existing root identity
+  // Check for existing root identity (log only once)
   useEffect(() => {
     const checkExisting = async () => {
-      if (connected && publicKey && prism.program) {
+      if (connected && publicKey && prism.program && !hasLoggedExistingRoot) {
         const rootResult = prism.getRootPDA();
         if (rootResult) {
           setRootAddress(rootResult.pda.toBase58());
           const existing = await prism.fetchRootIdentity();
           if (existing) {
             addLog(`Found existing root identity with ${existing.contextCount} contexts`);
+            setHasLoggedExistingRoot(true);
           }
         }
       }
@@ -176,7 +178,7 @@ export const DarkPoolDemo: React.FC = () => {
     if (connected && currentStep === 'balance') {
       checkExisting();
     }
-  }, [connected, publicKey, prism, currentStep, addLog]);
+  }, [connected, publicKey, prism, currentStep, addLog, hasLoggedExistingRoot]);
 
   const currentStepIndex = steps.findIndex(s => s.id === currentStep);
 
@@ -206,15 +208,14 @@ export const DarkPoolDemo: React.FC = () => {
           
         case 'context':
           // Check if we already have a context from a previous run
-          if (contextAddress && contextIndex !== null) {
-            addLog('⚠ Using existing context from previous run');
+          if (contextAddress && contextIndex !== null && prismProtocol) {
+            addLog('⚠ Checking existing context from previous run...');
             addLog(`  Context: ${contextAddress.slice(0, 8)}...`);
-            addLog('  Note: If this context was already revoked, you may need to create a new one');
             
-            // Check if context is already revoked
+            // Check if context is already revoked using prismProtocol
             try {
               const contextPDA = new PublicKey(contextAddress);
-              const contextAccount = await prism.fetchContextIdentity(contextPDA);
+              const contextAccount = await (prismProtocol as any).program.account.contextIdentity.fetch(contextPDA);
               if (contextAccount?.revoked) {
                 addLog('⚠ This context was already revoked in a previous run');
                 addLog('Creating a new context...');
@@ -233,45 +234,63 @@ export const DarkPoolDemo: React.FC = () => {
             }
           }
           
-          addLog('Creating disposable context identity...');
-          addLog('Sending transaction to Solana devnet...');
-          info('Creating context on Solana devnet...');
+          addLog('Creating disposable context identity (ENCRYPTED ROOT)...');
+          addLog('Sending transaction to Solana devnet (create_context_encrypted)...');
+          info('Creating encrypted context on Solana devnet...');
           
-          // Real on-chain transaction!
-          const contextResult = await prism.createContext(
-            0, // DeFi context type
-            50 * LAMPORTS_PER_SOL // 50 SOL max per tx
-          );
+          if (!prismProtocol) {
+            error('PrismProtocol not initialized');
+            addLog('ERROR: PrismProtocol not ready');
+            break;
+          }
+          
+          // Real on-chain transaction using encrypted root identity!
+          const contextResult = await prismProtocol.createContextEncrypted({
+            type: ContextType.DeFi,
+            maxPerTransaction: BigInt(50 * LAMPORTS_PER_SOL),
+          });
           
           if (contextResult) {
-            setContextAddress(contextResult.contextPda.toBase58());
+            setContextAddress(contextResult.contextAddress.toBase58());
             setContextIndex(contextResult.contextIndex);
-            setRootAddress(contextResult.rootPda.toBase58());
+            // Root PDA is derivable but not stored in context for encrypted flow
+            const [rootPda] = prismProtocol.getRootIdentityPDA();
+            setRootAddress(rootPda.toBase58());
             
-            addTx(contextResult.signature, 'create_context');
-            addLog(`Root Identity: ${contextResult.rootPda.toBase58().slice(0, 8)}...`);
-            addLog(`Context PDA: ${contextResult.contextPda.toBase58().slice(0, 8)}...`);
+            if (contextResult.signature !== 'existing') {
+              addTx(contextResult.signature, 'create_context_encrypted');
+              addLog('✓ Encrypted context created ON-CHAIN!');
+              addLog('View on Solana Explorer ↗');
+              success('Encrypted context created on-chain!');
+            } else {
+              addLog('⚠ Context already exists at this index');
+              addLog('⚠ Note: For a fresh demo, previous context should be revoked first');
+              addLog('⚠ Using existing context for this demo run...');
+              info('Using existing encrypted context');
+              // Still proceed - the revoke step will create a transaction
+            }
+            
+            addLog(`Root Identity (PDA): ${rootPda.toBase58().slice(0, 8)}...`);
+            addLog(`Context PDA: ${contextResult.contextAddress.toBase58().slice(0, 8)}...`);
             addLog(`Context Index: ${contextResult.contextIndex}`);
+            addLog(`Root hash: ${contextResult.rootIdentityHash.slice(0, 16)}...`);
+            if (contextResult.encryptionCommitment) {
+              addLog(`Arcium commitment: ${contextResult.encryptionCommitment.slice(0, 16)}...`);
+            }
             addLog('Type: DeFi (Dark Pool Trading)');
             addLog('Max per TX: 50 SOL');
+            addLog('Mode: ENCRYPTED ROOT (context does not store root pubkey)');
             addLog('');
-            addLog('✓ Context created ON-CHAIN!');
-            addLog('View on Solana Explorer ↗');
             
             // Show success animation and toast
             setShowSuccess(true);
-            success('Context created on-chain!');
             setTimeout(() => setShowSuccess(false), 2000);
             
             setCurrentStep('proof');
           } else {
-            const errorMsg = prism.error || 'Failed to create context';
+            const errorMsg = 'Failed to create encrypted context';
             addLog(`ERROR: ${errorMsg}`);
             error(errorMsg);
-            if (prism.error?.includes('insufficient')) {
-              addLog('Need devnet SOL: https://faucet.solana.com');
-              error('Insufficient SOL. Get devnet SOL from faucet.solana.com');
-            }
           }
           break;
           
@@ -299,9 +318,7 @@ export const DarkPoolDemo: React.FC = () => {
             
             const arciumStatus = prismProtocol.getArciumStatus();
             addLog(`  Arcium Mode: ${arciumStatus.mode}`);
-            if (arciumStatus.mxeAddress) {
-              addLog(`  MXE Address: ${arciumStatus.mxeAddress.slice(0, 8)}...`);
-            }
+            // MXE address (if any) is logged inside the SDK
             
             // Generate encrypted solvency proof (Arcium + Noir)
             addLog('Calling generateEncryptedSolvencyProof...');
@@ -424,10 +441,17 @@ export const DarkPoolDemo: React.FC = () => {
             break;
           }
           
+          if (!prismProtocol) {
+            error('PrismProtocol not initialized');
+            addLog('ERROR: PrismProtocol not ready');
+            setCurrentStep('complete');
+            break;
+          }
+          
           // Check context state before attempting to revoke
           try {
             const contextPDA = new PublicKey(contextAddress);
-            const contextAccount = await prism.fetchContextIdentity(contextPDA);
+            const contextAccount = await (prismProtocol as any).program.account.contextIdentity.fetch(contextPDA);
             if (contextAccount?.revoked) {
               addLog('⚠ Context was already revoked in a previous run');
               addLog('This is expected if you ran the demo before');
@@ -448,37 +472,53 @@ export const DarkPoolDemo: React.FC = () => {
           addLog('Sending revoke transaction...');
           info('Revoking context on-chain...');
           
-          // Real on-chain transaction!
-          const revokeResult = await prism.revokeContext(contextIndex);
-          
-          if (revokeResult) {
-            // Handle both successful revocation and already-revoked cases
-            if (revokeResult.signature === 'already_revoked') {
-              addLog('✓ Context was already revoked (from previous transaction)');
-              addLog('This can happen if the transaction was processed in a previous attempt');
+          // Real on-chain transaction using prismProtocol!
+          try {
+            const revokeResult = await prismProtocol.revokeContextByIndex(contextIndex);
+            
+            if (revokeResult) {
+              if (revokeResult.signature === 'already_revoked') {
+                addLog('✓ Context was already revoked (from previous run)');
+                addLog('This is expected if you ran the demo before');
+              } else {
+                addTx(revokeResult.signature, 'revoke_context');
+                addLog('✓ Context revoked ON-CHAIN!');
+              }
+              
+              addLog('');
+              addLog('═══════════════════════════════════════');
+              addLog('   PRIVACY PRESERVED');
+              addLog('═══════════════════════════════════════');
+              addLog('');
+              addLog('No one can link this trade to your wallet');
+              addLog(`Total transactions: ${txSignatures.length + (revokeResult.signature !== 'already_revoked' ? 1 : 0)}`);
+              
+              // Show success animation and toast
+              setShowSuccess(true);
+              success('Context burned! Privacy preserved!');
+              setTimeout(() => setShowSuccess(false), 2000);
+              
+              setCurrentStep('complete');
             } else {
-              addTx(revokeResult.signature, 'revoke_context');
-              addLog('✓ Context revoked ON-CHAIN!');
+              throw new Error('Revoke returned null');
             }
-            
-            addLog('');
-            addLog('═══════════════════════════════════════');
-            addLog('   PRIVACY PRESERVED');
-            addLog('═══════════════════════════════════════');
-            addLog('');
-            addLog('No one can link this trade to your wallet');
-            addLog(`Total transactions: ${txSignatures.length + (revokeResult.signature !== 'already_revoked' ? 1 : 0)}`);
-            
-            // Show success animation and toast
-            setShowSuccess(true);
-            success('Context burned! Privacy preserved!');
-            setTimeout(() => setShowSuccess(false), 2000);
-            
-            setCurrentStep('complete');
-          } else {
-            const errorMsg = prism.error || 'Failed to revoke context';
+          } catch (err: any) {
+            const errorMsg = err.message || 'Failed to revoke context';
             addLog(`ERROR: ${errorMsg}`);
             error(errorMsg);
+            
+            // Check if it's already revoked
+            if (errorMsg.includes('already revoked') || errorMsg.includes('ContextAlreadyRevoked') || errorMsg.includes('already been processed')) {
+              addLog('⚠ Context was already revoked');
+              addLog('');
+              addLog('═══════════════════════════════════════');
+              addLog('   PRIVACY PRESERVED');
+              addLog('═══════════════════════════════════════');
+              addLog('');
+              addLog('No one can link this trade to your wallet');
+              addLog(`Total transactions: ${txSignatures.length}`);
+            }
+            
             // Still advance for demo purposes
             setCurrentStep('complete');
           }
@@ -538,6 +578,35 @@ export const DarkPoolDemo: React.FC = () => {
   const openExplorer = (signature: string) => {
     window.open(`https://explorer.solana.com/tx/${signature}?cluster=devnet`, '_blank');
   };
+
+  const scrollToTop = () => {
+    const el = terminalRef.current;
+    if (el) {
+      el.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const scrollToBottom = () => {
+    const el = terminalRef.current;
+    if (el) {
+      el.scrollTo({ top: el.scrollHeight, behavior: "smooth" });
+    }
+  };
+
+  const handleTerminalScroll = () => {
+    const el = terminalRef.current;
+    if (!el) return;
+    const distanceFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setIsAtBottom(distanceFromBottom < 16);
+  };
+
+  // Auto-scroll terminal to show the latest logs when user is at bottom
+  useEffect(() => {
+    const el = terminalRef.current;
+    if (el && isAtBottom) {
+      el.scrollTop = el.scrollHeight;
+    }
+  }, [logs, isAtBottom]);
 
   return (
     <div className="min-h-screen p-4 md:p-8">
@@ -702,11 +771,7 @@ export const DarkPoolDemo: React.FC = () => {
                     Arcium MPC: {arciumStatus.mode.toUpperCase()} MODE
                   </HoloText>
                 </div>
-                {arciumStatus.mxeAddress && (
-                  <HoloText size="xs" color="muted" className="font-mono">
-                    MXE: {arciumStatus.mxeAddress.slice(0, 8)}...
-                  </HoloText>
-                )}
+                {/* MXE address (if any) is handled inside the SDK logs */}
                 {commitment && (
                   <div className="mt-2 pt-2 border-t border-fuchsia-400/20">
                     <HoloText size="xs" color="muted" className="mb-1">Commitment:</HoloText>
@@ -791,16 +856,36 @@ export const DarkPoolDemo: React.FC = () => {
                   Terminal
                 </HoloText>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-3">
                 <div className={`crystal-status-indicator ${connected ? 'bg-green-400' : 'bg-red-400'}`} />
                 <HoloText size="xs" color="muted">
                   {connected ? 'Connected' : 'Disconnected'}
                 </HoloText>
+                <div className="flex items-center gap-1">
+                  <button
+                    type="button"
+                    onClick={scrollToTop}
+                    className="px-1.5 py-0.5 text-[10px] rounded border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                  >
+                    Top
+                  </button>
+                  <button
+                    type="button"
+                    onClick={scrollToBottom}
+                    className="px-1.5 py-0.5 text-[10px] rounded border border-cyan-400/40 text-cyan-300 hover:bg-cyan-500/10 transition-colors"
+                  >
+                    Bottom
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* Terminal Output */}
-            <div className="crystal-terminal p-3 md:p-4 font-mono text-xs md:text-sm h-[350px] md:h-[400px] overflow-y-auto custom-scrollbar">
+            <div
+              ref={terminalRef}
+              onScroll={handleTerminalScroll}
+              className="crystal-terminal p-3 md:p-4 font-mono text-xs md:text-sm h-[350px] md:h-[400px] overflow-y-auto custom-scrollbar"
+            >
               <AnimatePresence>
                 {logs.length === 0 ? (
                   <motion.div

@@ -199,7 +199,8 @@ html, body {
   background: rgba(0,0,0,0.8);
   border: 1px solid #00FFFF;
   position: relative;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
 }
 
 .crystal-terminal::before {

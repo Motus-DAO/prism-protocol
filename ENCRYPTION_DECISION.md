@@ -5,17 +5,19 @@
 ### What's Stored in ContextIdentity:
 ```rust
 pub struct ContextIdentity {
-    pub root_identity: Pubkey,                    // PLAINTEXT - stored for program logic
-    pub root_identity_hash: Option<[u8; 32]>,    // ENCRYPTED - for privacy
-    pub encryption_commitment: Option<[u8; 32]>, // Arcium commitment
+    pub root_identity: Pubkey,                         // For public contexts, real root PDA
+    pub root_identity_hash: Option<[u8; 32]>,          // For encrypted contexts, hash of root PDA
+    pub encryption_commitment: Option<[u8; 32]>,       // Arcium commitment
     // ... other fields
 }
 ```
 
 ### What's Visible in Transactions:
 - **Signing Wallet**: Always visible in transaction signature (can't hide - required for signing)
-- **Root Identity**: Stored in plaintext in context account
-- **Context Identity**: The PDA address itself
+- **Root Identity**:
+  - **Public contexts** (`create_context`): stored in plaintext in the context account
+  - **Encrypted contexts** (`create_context_encrypted`): **not stored**, `root_identity` is set to the zero pubkey
+- **Context Identity**: The PDA address itself (derived from root PDA + index)
 
 ## The Privacy Problem
 
@@ -46,12 +48,13 @@ pub struct ContextIdentity {
 - The signing wallet isn't stored in context, so encrypting it wouldn't help
 
 **Cons:**
-- Root identity still stored in plaintext for program logic (line 95)
-- Someone who knows your wallet can still derive your root identity
+- Someone who knows your wallet can still derive your root identity PDA (PDA derivation is public)
 
 **Current Implementation:**
-- ✅ Encrypting root identity
-- ❌ But still storing it in plaintext (defeats the purpose!)
+- ✅ `create_context` (public): stores `root_identity` in plaintext, no hash/commitment
+- ✅ `create_context_encrypted` (private): **does not** store plaintext `root_identity`
+  - Sets `context.root_identity = Pubkey::default()` for encrypted contexts
+  - Stores `root_identity_hash` and `encryption_commitment` only
 
 ### Option 2: Encrypt Signing Wallet ❌
 

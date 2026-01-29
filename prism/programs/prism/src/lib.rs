@@ -94,7 +94,9 @@ pub mod prism {
         // Store ONLY encrypted/hashed root identity (no plaintext for privacy)
         // The root_identity field is set to a zero pubkey to indicate it's encrypted
         // All verification uses root_identity_hash instead
-        context.root_identity = Pubkey::default(); // Zero pubkey = encrypted context
+        // Explicitly set to zero pubkey (all zeros in bytes)
+        let zero_pubkey = Pubkey::new_from_array([0u8; 32]);
+        context.root_identity = zero_pubkey; // Zero pubkey = encrypted context
         context.root_identity_hash = Some(root_identity_hash); // Hash of root identity PDA (from Arcium)
         context.encryption_commitment = Some(encryption_commitment);
         context.context_type = context_type;
@@ -297,8 +299,7 @@ pub struct RevokeContext<'info> {
             root_identity.key().as_ref(),
             &context_identity.context_index.to_le_bytes()
         ],
-        bump = context_identity.bump,
-        constraint = context_identity.root_identity == root_identity.key() @ PrismError::ContextMismatch
+        bump = context_identity.bump
     )]
     pub context_identity: Account<'info, ContextIdentity>,
 }
@@ -368,8 +369,7 @@ pub struct RecordSpending<'info> {
             root_identity.key().as_ref(),
             &context_identity.context_index.to_le_bytes()
         ],
-        bump = context_identity.bump,
-        constraint = context_identity.root_identity == root_identity.key() @ PrismError::ContextMismatch
+        bump = context_identity.bump
     )]
     pub context_identity: Account<'info, ContextIdentity>,
 }
