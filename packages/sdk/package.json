@@ -1,14 +1,26 @@
 {
   "name": "@prism-protocol/sdk",
   "version": "0.1.0",
-  "description": "Prism Protocol SDK - Privacy infrastructure for dark pool trading on Solana",
+  "description": "Prism Protocol SDK - Privacy infrastructure for building privacy-preserving applications on Solana",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "files": [
+    "dist",
+    "circuits",
+    "README.md",
+    "LICENSE",
+    "API.md",
+    "EXAMPLES.md",
+    "TROUBLESHOOTING.md",
+    "MIGRATION.md"
+  ],
   "scripts": {
     "build": "tsc",
+    "build:watch": "tsc --watch",
     "test": "jest",
     "test:coverage": "jest --coverage",
-    "clean": "rm -rf dist"
+    "clean": "rm -rf dist",
+    "prepublishOnly": "npm run clean && npm run build && npm test"
   },
   "keywords": [
     "solana",
@@ -19,6 +31,9 @@
   ],
   "author": "Prism Protocol",
   "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  },
   "dependencies": {
     "@arcium-hq/client": "^0.6.3",
     "@aztec/bb.js": "^3.0.2",

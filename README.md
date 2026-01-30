@@ -1,42 +1,38 @@
 # Prism Protocol
-**Privacy Infrastructure for Dark Pool Trading on Solana**
+**Privacy infrastructure for Solana**
 
-> 🚀 **Hackathon MVP:** Anonymous dark pool trading with ZK solvency proofs  
-> 📅 **Status:** In active development (Jan 20-26, 2026)  
-> 🎯 **Target:** Privacy Tooling + Aztec/Noir + Arcium + Range bounties ($32K)
+> Build anonymous voting, wallet protection, token gating, dark pool trading, and any privacy-preserving application with one SDK.
 
-## 🎯 The Problem
+## 🎯 What Prism Provides
+
+**Prism Protocol is infrastructure** – identity, contexts, ZK proofs, and encryption so developers can build privacy into their apps.
+
+- **Identity & contexts** – Root identity plus disposable context identities (DeFi, Social, Gaming, etc.) with spending limits and revocation.
+- **ZK solvency proofs** – Prove “balance ≥ threshold” without revealing the amount (Noir).
+- **Arcium MPC encryption** – Encrypt balances and data; combine with proofs for maximum privacy.
+
+**Use it for:** anonymous DAO voting, anti-drain wallet protection, token gating, private DeFi/dark pools, social privacy, and custom privacy-preserving flows.
+
+## 💡 Example: The Dark Pool Problem
 
 **Dark pool traders face an impossible choice:**
 - Prove you're solvent to access the pool → Reveal holdings → Get front-run
 - Hide your holdings → Can't prove solvency → Locked out
 
-**A $500K whale can't prove they meet a $10K minimum without exposing their entire position.**
-
-## 💡 The Solution
-
-**Prism Protocol: Privacy infrastructure that enables anonymous dark pool participation**
-
-1. **Create disposable context** - Fresh wallet address
-2. **Generate ZK proof** - "Balance > $10K" (hides actual $500K)
-3. **Access dark pool** - Verified solvency without exposure
-4. **Execute trade** - Complete privacy
-5. **Burn context** - No trace to main wallet
-
-**Result:** Whale status hidden, front-running prevented, privacy preserved.
+**With Prism:** create a disposable context, generate a ZK solvency proof (“balance ≥ $10K”), access the pool without exposing your real balance, then burn the context. Same primitives work for voting, gating, and other use cases.
 
 ## 🔑 Key Innovations (MVP Scope)
 
 ### 1. Context-Based Identities
 ```
 Root Identity (Hidden)
-└── Dark Pool Context (Disposable)
-    ├── Fresh wallet address
+└── Context (DeFi, Social, Gaming, etc.)
+    ├── Fresh wallet address (PDA)
     ├── Spending limits enforced
     └── Burns after use
 ```
 
-**Why it matters:** Main wallet never exposed to dark pool operators or other traders.
+**Why it matters:** Main wallet never exposed to apps, pools, or other parties.
 
 ### 2. Noir ZK Solvency Proofs
 ```rust
@@ -118,26 +114,21 @@ By including the `contextPubkey` in the Arcium commitment, we ensure:
 
 **See [ARCIUM_INTEGRATION_DEEP_DIVE.md](./packages/sdk/src/encryption/ARCIUM_INTEGRATION_DEEP_DIVE.md) for complete technical documentation.**
 
-## 🎯 Primary Use Case: Dark Pool Trading
+## 🎯 Use Cases (SDK-Powered)
 
-### The Demo Flow
-1. **Connect wallet** - Show balance ($500K SOL)
-2. **Create context** - Generate disposable identity
-3. **Generate proof** - Noir ZK circuit proves balance > $10K
-4. **Access pool** - Dark pool verifies proof on-chain
-5. **Execute trade** - Complete transaction privately
-6. **Burn context** - Disposable wallet destroyed
-7. **Result** - Main wallet never exposed ✅
+The **Prism SDK** (`@prism-protocol/sdk`) supports many use cases; the **demo app** showcases dark pool trading.
 
-### Beyond Dark Pools (Future Applications)
-Our infrastructure also enables:
-- **Anonymous governance** - Vote without revealing holdings
-- **Professional reputation** - Prove experience without doxxing clients
-- **Healthcare privacy** - Therapy data marketplace without identity exposure
-- **Wallet drain protection** - Disposable contexts for unknown sites
-- **Cross-chain attestations** - Use reputation across chains
+### Demo: Dark Pool Trading
+1. Connect wallet → Create context → Generate ZK solvency proof → Access pool → Execute trade → Burn context. Main wallet never exposed.
 
-*See `/ideation/` folder for complete use case documentation*
+### Other Use Cases (Same SDK)
+- **Anonymous DAO voting** – Vote without revealing token holdings
+- **Wallet drain protection** – Disposable contexts with low limits for unknown sites
+- **Token gating** – Prove “hold ≥ N tokens” without revealing amount
+- **Private DeFi** – Trade without linking to main wallet
+- **Social / professional** – Contexts for different identities and limits
+
+*See [packages/sdk/EXAMPLES.md](./packages/sdk/EXAMPLES.md) for full code examples and [packages/sdk/README.md](./packages/sdk/README.md) for API docs.*
 
 ## 🏗️ Technical Stack (MVP)
 
@@ -183,21 +174,33 @@ Dark Pool Trading Simulator
 
 ## 🛠️ For Developers
 
-### 5-Line Integration
-```typescript
-import { PrismProtocol } from '@prism-protocol/sdk';
+### Install & 5-Line Example
 
-const prism = new PrismProtocol({ wallet });
-const context = await prism.createContext('darkpool');
-const proof = await prism.generateSolvencyProof(10000);
-const verified = await darkPool.verifyProof(proof);
+Install from npm: **[@prism-protocol/sdk](https://www.npmjs.com/package/@prism-protocol/sdk)**
+
+```bash
+npm install @prism-protocol/sdk
+# or: yarn add @prism-protocol/sdk
+# or: pnpm add @prism-protocol/sdk
 ```
 
-### Why Developers Choose Prism
-- ✅ **Simple API** - Intuitive, well-documented
-- ✅ **Production ready** - Deployed on devnet
-- ✅ **Open source** - MIT license
-- ✅ **Composable** - Works with existing Solana apps
+```typescript
+import { PrismProtocol, ContextType } from '@prism-protocol/sdk';
+
+const prism = new PrismProtocol({ rpcUrl: 'https://api.devnet.solana.com', wallet });
+await prism.initialize();
+const context = await prism.createContext({ type: ContextType.DeFi, maxPerTransaction: 1_000_000_000n });
+const proof = await prism.generateSolvencyProof({ actualBalance: 500_000_000n, threshold: 100_000_000n });
+// Use proof for voting, gating, dark pool access, etc.
+```
+
+Full API and use-case examples: **[packages/sdk/README.md](./packages/sdk/README.md)** and **[packages/sdk/EXAMPLES.md](./packages/sdk/EXAMPLES.md)**.
+
+### Why use Prism
+- ✅ **One SDK, many use cases** – Voting, gating, dark pools, wallet protection, and more
+- ✅ **Simple API** – Identity, contexts, proofs, encryption
+- ✅ **Open source** – MIT license
+- ✅ **Composable** – Works with existing Solana apps
 
 ## 🏆 Hackathon Strategy
 

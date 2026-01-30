@@ -28,9 +28,9 @@ async function anonymousVoting() {
   });
   await prism.initialize();
 
-  // Create governance context
+  // Create context for governance (use DeFi or Professional type)
   const context = await prism.createContext({
-    type: ContextType.Governance,
+    type: ContextType.DeFi,
     privacyLevel: PrivacyLevel.Maximum
   });
 

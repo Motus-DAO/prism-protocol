@@ -30,6 +30,8 @@ That's it! You now have a disposable identity and a privacy-preserving proof.
 
 ## 📦 Installation
 
+Install from npm: **[@prism-protocol/sdk](https://www.npmjs.com/package/@prism-protocol/sdk)**
+
 ```bash
 npm install @prism-protocol/sdk
 # or
@@ -84,7 +86,7 @@ Contexts are disposable identities derived from your root. Each context:
 - Is unlinkable to your root identity (when using encrypted contexts)
 
 ```typescript
-// Create a DeFi context for dark pool trading
+// Create a context (e.g. for DeFi, governance, or trading)
 const context = await prism.createContext({
   type: ContextType.DeFi,
   maxPerTransaction: 1000000000n // 1 SOL limit
@@ -319,13 +321,14 @@ We welcome contributions! Please see our contributing guidelines (coming soon).
 
 ## 📄 License
 
-MIT License - see [LICENSE](../LICENSE) file for details.
+MIT License - see [LICENSE](./LICENSE) file for details.
 
 ## 🔗 Links
 
-- **GitHub**: [https://github.com/prism-protocol/sdk](https://github.com/prism-protocol/sdk)
-- **Documentation**: [https://docs.prismprotocol.com](https://docs.prismprotocol.com)
-- **Discord**: [Join our community](https://discord.gg/prism-protocol)
+- **npm**: [@prism-protocol/sdk](https://www.npmjs.com/package/@prism-protocol/sdk) – install with `npm install @prism-protocol/sdk`
+- **GitHub**: [Prism Protocol](https://github.com/Motus-DAO/Prism-protocol)
+- **Documentation**: [https://docs.prismprotocol.com](https://docs.prismprotocol.com) *(if applicable)*
+- **Discord**: [Join our community](https://discord.gg/prism-protocol) *(if applicable)*
 
 ## 🙏 Acknowledgments
 

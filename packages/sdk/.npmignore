@@ -1,0 +1,27 @@
+# Source (publish built dist only)
+src/
+__tests__/
+__mocks__/
+*.test.ts
+*.spec.ts
+jest.config.js
+tsconfig.json
+
+# Docs (keep in repo; omit from npm tarball to reduce size, or remove to ship them)
+# README.md is included by default; uncomment to exclude other docs:
+# API.md
+# EXAMPLES.md
+# TROUBLESHOOTING.md
+# MIGRATION.md
+
+# Dev and tooling
+node_modules/
+coverage/
+*.log
+.env
+.env.*
+.DS_Store
+demo.ts
+test.ts
+
+# Circuits are included (required at runtime for proof generation)
