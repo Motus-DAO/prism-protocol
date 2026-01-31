@@ -56,7 +56,7 @@ const steps: StepInfo[] = [
 
 export const DarkPoolDemo: React.FC = () => {
   const wallet = useWallet();
-  const { publicKey, connected, connecting } = wallet;
+  const { publicKey, connected, connecting, disconnect } = wallet;
   const { connection } = useConnection();
   const prism = usePrismProgram();
   const { toasts, removeToast, success, error, info } = useToast();
@@ -326,10 +326,11 @@ export const DarkPoolDemo: React.FC = () => {
             console.log('[DEMO] Balance:', balanceLamports.toString());
             console.log('[DEMO] Threshold:', thresholdLamports.toString());
             
+            // Pass context as string to avoid cross-package PublicKey instanceof issues (SDK normalizes internally)
             const proofResult = await prismProtocol.generateEncryptedSolvencyProof({
               actualBalance: balanceLamports,
               threshold: thresholdLamports,
-              contextPubkey: new PublicKey(contextAddress)
+              contextPubkey: contextAddress
             });
             
             console.log('[DEMO] Proof generation complete:', proofResult);
@@ -540,7 +541,17 @@ export const DarkPoolDemo: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Step error:', err);
-      addLog(`ERROR: ${err.message}`);
+      const msg = err?.message ?? String(err);
+      addLog(`ERROR: ${msg}`);
+      // Public devnet RPC often returns 403; guide user to set a custom RPC
+      if (msg.includes('403') || msg.includes('Forbidden') || msg.includes('Access forbidden')) {
+        addLog('');
+        addLog('💡 Devnet RPC returned 403 (rate limit / access restricted).');
+        addLog('   Add to apps/demo/.env.local:');
+        addLog('   NEXT_PUBLIC_SOLANA_RPC_URL=https://your-devnet-rpc-url');
+        addLog('   (e.g. Helius, QuickNode, or Ankr devnet – then restart the demo).');
+        error('RPC 403: Set NEXT_PUBLIC_SOLANA_RPC_URL in .env.local to a devnet RPC and restart.');
+      }
     }
     
     setIsProcessing(false);
@@ -640,6 +651,13 @@ export const DarkPoolDemo: React.FC = () => {
             <span className="px-2 py-1 bg-green-500/10 border border-green-400/30 rounded-full text-green-400 text-xs font-semibold">
               Devnet
             </span>
+            <button
+              type="button"
+              onClick={() => disconnect()}
+              className="px-3 py-1.5 text-xs font-medium text-white/80 hover:text-white bg-white/10 hover:bg-red-500/20 border border-white/20 hover:border-red-400/40 rounded-full transition-colors"
+            >
+              Disconnect
+            </button>
           </motion.div>
         )}
       </motion.div>

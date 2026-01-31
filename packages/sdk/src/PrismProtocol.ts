@@ -988,16 +988,20 @@ export class PrismProtocol {
   async generateEncryptedSolvencyProof(params: {
     actualBalance: bigint;
     threshold: bigint;
-    contextPubkey: PublicKey;
+    contextPubkey: string | PublicKey;
   }): Promise<{
     encryptedBalance: EncryptedBalance;
     proof: SolvencyProof;
     contextPubkey: string;
   }> {
-    // Validate inputs
+    // Validate inputs and normalize contextPubkey (accept string to avoid cross-package PublicKey instanceof issues)
     validateLamports(params.actualBalance);
     validateLamports(params.threshold);
     validatePublicKey(params.contextPubkey);
+    const contextPubkey =
+      typeof params.contextPubkey === 'string'
+        ? new PublicKey(params.contextPubkey)
+        : params.contextPubkey;
 
     this.logger.info('DARK POOL ACCESS - Encrypted Solvency Proof');
     
@@ -1005,7 +1009,7 @@ export class PrismProtocol {
     this.logger.debug('[1/2] Encrypting balance with Arcium MPC...');
     const encryptionResult = await this.arciumEncryption.encryptBalance({
       balance: params.actualBalance,
-      contextPubkey: params.contextPubkey
+      contextPubkey
     });
 
     if (!encryptionResult.success || !encryptionResult.encryptedBalance) {
@@ -1034,7 +1038,7 @@ export class PrismProtocol {
     return {
       encryptedBalance: encryptionResult.encryptedBalance,
       proof,
-      contextPubkey: params.contextPubkey.toBase58()
+      contextPubkey: contextPubkey.toBase58()
     };
   }
 

@@ -8,8 +8,11 @@ import '../styles/globals.css';
 import '@solana/wallet-adapter-react-ui/styles.css';
 
 export default function App({ Component, pageProps }: AppProps) {
-  // Configure Solana network
-  const endpoint = useMemo(() => clusterApiUrl('devnet'), []);
+  // Configure Solana network: use custom RPC if set (avoids 403 from public api.devnet.solana.com)
+  const endpoint = useMemo(
+    () => process.env.NEXT_PUBLIC_SOLANA_RPC_URL || clusterApiUrl('devnet'),
+    []
+  );
   
   // Configure wallet adapters
   const wallets = useMemo(

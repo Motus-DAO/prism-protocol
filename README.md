@@ -263,19 +263,25 @@ npm run dev
 
 ## 📚 Documentation
 
-### For Hackathon Execution
-- **[WINNING_STRATEGY.md](./WINNING_STRATEGY.md)** ⭐ - **START HERE** - Focused MVP plan
-- [Anchor Smart Contracts](./prism/) - Solana program source
-- SDK Documentation - Coming after Day 3
+### Root (start here)
+- **[README.md](./README.md)** - This file
+- **[WINNING_STRATEGY.md](./WINNING_STRATEGY.md)** ⭐ - Hackathon execution plan
+- **[HACKATHON_GAP_ANALYSIS.md](./HACKATHON_GAP_ANALYSIS.md)** - Submission checklist & gaps
+- [CHANGELOG.md](./CHANGELOG.md) - Project history
 
-### Full Vision & Research
-- [/ideation/](./ideation/) - Complete product vision, use cases, and research
-  - PRD.md - Full feature specifications
-  - ARCHITECTURE.md - Complete technical architecture
-  - USE_CASES.md - All potential applications
-  - And more...
+### [docs/](./docs/) – Reference (keep)
+- [TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md](./docs/TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md) - What we do and don't claim
+- [ARCIUM_CRYPTOGRAPHIC_FLOW.md](./docs/ARCIUM_CRYPTOGRAPHIC_FLOW.md) - Arcium + ZK flow
+- [UNDER_THE_HOOD_EXPLANATION.md](./docs/UNDER_THE_HOOD_EXPLANATION.md) - Step-by-step execution
+- [DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md) - 3-minute demo script
+- [ARCHITECTURE_EXPLAINED.md](./docs/ARCHITECTURE_EXPLAINED.md), [ERROR_HANDLING.md](./docs/ERROR_HANDLING.md), [UPDATE_ENV.md](./docs/UPDATE_ENV.md), [ARCIUM_READY.md](./docs/ARCIUM_READY.md), and other setup/reference docs
 
-*Note: Focus on WINNING_STRATEGY.md during hackathon. Ideation docs are for reference and post-hackathon development.*
+### [ideation/](./ideation/) – Planning (can delete later)
+- PRD, ARCHITECTURE, USE_CASES, HACKATHON_ROADMAP, MASTER_CHECKLIST, WOW_FACTOR_STRATEGY, SDK_PRODUCTION_PLAN, etc.
+
+### Code
+- [Anchor program](./prism/) - Solana program source
+- [SDK](./packages/sdk/) - [packages/sdk/README.md](./packages/sdk/README.md), API.md, EXAMPLES.md
 
 ## 🎯 Project Philosophy
 
@@ -293,6 +299,14 @@ Not building:
 - ❌ Concept demos without real code
 
 We've learned: **Judges reward what works, not what's promised.**
+
+## 🔒 Transparency: What We Do and Don't Claim
+
+**What this SDK provides:** Context-based identities (one address per use case), ZK solvency proofs (prove balance ≥ threshold without revealing amount), Arcium encryption binding balances to contexts, and spending limits / revocable contexts. **Application-level isolation** so dApps see a context PDA, not your main wallet.
+
+**What we do not provide:** Signer anonymity. On Solana, the fee-payer wallet is always visible on every transaction. Root and context PDAs are derivable from the signer, so an on-chain analyst can link contexts to the same wallet. We do not break that link.
+
+*Full technical explanation: [docs/TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md](./docs/TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md)*
 
 ## 📄 License
 

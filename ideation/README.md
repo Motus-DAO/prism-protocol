@@ -1,8 +1,8 @@
 # Ideation Folder
 
-This folder contains all the initial research, planning, and brainstorming documents for Prism Protocol. These represent the FULL vision of the project.
+This folder contains initial research, planning, and brainstorming documents for Prism Protocol. These represent the full vision and can be **deleted or archived later** if you want to slim the repo.
 
-**Current focus:** See `/WINNING_STRATEGY.md` in the root for the focused MVP approach.
+**Current focus:** See [WINNING_STRATEGY.md](../WINNING_STRATEGY.md) in the repo root for the focused MVP approach.
 
 ---
 

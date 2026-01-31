@@ -132,7 +132,7 @@ Ethereum (Verify proof)
 Access Granted (Privacy maintained)
 ```
 
-#### 6. Prism Name Service (PNS)
+#### 6. Prism Name Service (PNS) - See if we can create template for projects to create their own NameService? would that make sense?
 **Concept**: Universal names with context-aware resolution
 
 **Example**:
