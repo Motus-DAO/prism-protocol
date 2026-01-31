@@ -18,12 +18,20 @@ const nextConfig = {
   // Configure webpack to handle TypeScript from SDK
   webpack: (config, { defaultLoaders, isServer }) => {
     const sdkPath = path.resolve(__dirname, '../../packages/sdk/src');
+    const appNodeModules = path.resolve(__dirname, 'node_modules');
     
     // Add the SDK source directory to webpack's resolve
     config.resolve.alias = {
       ...config.resolve.alias,
       '@prism-protocol/sdk': sdkPath,
     };
+    
+    // Resolve modules from this app's node_modules first (fixes Vercel: @noir-lang/noir_js)
+    config.resolve.modules = [
+      appNodeModules,
+      path.resolve(__dirname, '../../packages/sdk/node_modules'),
+      ...(Array.isArray(config.resolve.modules) ? config.resolve.modules : ['node_modules']),
+    ];
     
     // For client-side builds, mark Node.js modules as externals
     if (!isServer) {
