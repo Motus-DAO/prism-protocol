@@ -29,10 +29,11 @@
 | **Tests** | ✅ | 42 tests passing (unit + integration). |
 
 ### 1.2 Bounty Alignment (Conceptual)
-- **Privacy Tooling ($15K):** SDK + privacy-preserving dark pool — core fit.
+- **Privacy Infra ($15K):** Privacy infrastructure & SDK — core fit.
 - **Arcium ($10K):** End-to-end private DeFi with MPC — encryption + commitment in flow.
-- **Aztec ($10K):** Noir-based identity/proofs — solvency circuit + context identity.
-- **Other sponsor bounties:** Same demo can be framed for “private payments” or “open track” if rules allow.
+- **ZK Noir / Aztec ($10K):** Noir-based identity/proofs — solvency circuit + context identity.
+- **Helius ($5K):** RPC & infra for private Solana apps.
+- **Total:** $40K across four tracks.
 
 ---
 

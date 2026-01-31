@@ -1,188 +1,66 @@
 # Prism Protocol
 **Privacy infrastructure for Solana**
 
-> Build anonymous voting, wallet protection, token gating, dark pool trading, and any privacy-preserving application with one SDK.
+Prove solvency without revealing your balance. Private dark pool access, anonymous voting, token gating, and wallet protection with one SDK. *Your wallet's invisible shield.*
 
-## 🎯 What Prism Provides
+**[Try the Dark Pool Demo](https://prism-protocol-demo.vercel.app/demo)** · [Read the docs](./docs/README.md) · [GitHub](https://github.com/Motus-DAO/prism-protocol)
 
-**Prism Protocol is infrastructure** – identity, contexts, ZK proofs, and encryption so developers can build privacy into their apps.
+---
 
-- **Identity & contexts** – Root identity plus disposable context identities (DeFi, Social, Gaming, etc.) with spending limits and revocation.
-- **ZK solvency proofs** – Prove “balance ≥ threshold” without revealing the amount (Noir).
-- **Arcium MPC encryption** – Encrypt balances and data; combine with proofs for maximum privacy.
+## Overview
 
-**Use it for:** anonymous DAO voting, anti-drain wallet protection, token gating, private DeFi/dark pools, social privacy, and custom privacy-preserving flows.
+This project implements a privacy protocol on Solana that allows users to:
 
-## 💡 Example: The Dark Pool Problem
+- **Create context** — Derive a disposable identity (PDA) per app or use case. One root identity refracts into many context-bound addresses (like light through a prism into colors). Spending limits and revocation on-chain.
+- **Prove solvency** — Generate a zero-knowledge proof (Noir) that balance ≥ threshold without revealing the amount. Selective disclosure: prove what's needed, hide the rest.
+- **Encrypt & bind** — Arcium MPC encrypts balances; commitments are bound to the context. Verifiers see commitment + proof, not plaintext.
+- **Access or revoke** — Use the context and proof for dark pool access, voting, gating, etc.; or burn the context when done. Main wallet never exposed.
 
-**Dark pool traders face an impossible choice:**
-- Prove you're solvent to access the pool → Reveal holdings → Get front-run
-- Hide your holdings → Can't prove solvency → Locked out
+The implementation uses **Noir ZK proofs** and **Arcium MPC encryption** with **Solana PDAs** so that dApps see a context address and verified credentials, not your main wallet or full balance.
 
-**With Prism:** create a disposable context, generate a ZK solvency proof (“balance ≥ $10K”), access the pool without exposing your real balance, then burn the context. Same primitives work for voting, gating, and other use cases.
+### Example: The Dark Pool Problem
 
-## 🔑 Key Innovations (MVP Scope)
+Dark pool traders face an impossible choice: prove solvency → reveal holdings → get front-run; or hide holdings → can't prove solvency → locked out. **With Prism:** create a disposable context, generate a ZK solvency proof ("balance ≥ $10K"), access the pool without exposing your real balance, then burn the context. [More: Dark Pools and Solana](./docs/DARK_POOLS_AND_SOLANA.md).
 
-### 1. Context-Based Identities
-```
-Root Identity (Hidden)
-└── Context (DeFi, Social, Gaming, etc.)
-    ├── Fresh wallet address (PDA)
-    ├── Spending limits enforced
-    └── Burns after use
-```
+---
 
-**Why it matters:** Main wallet never exposed to apps, pools, or other parties.
+## Project Structure
 
-### 2. Noir ZK Solvency Proofs
-```rust
-// Prove balance threshold without revealing amount
-fn verify_solvency(
-    actual_balance: Field,    // Private: $500K
-    threshold: pub Field       // Public: $10K
-) -> pub bool {
-    actual_balance >= threshold
-}
-```
+| Path | Description |
+|------|-------------|
+| `prism/` | Solana on-chain program (Anchor) — root identity, context manager |
+| `prism/programs/prism/src/` | Rust source for the program |
+| `packages/sdk/` | TypeScript SDK — `@prism-protocol/sdk` |
+| `apps/demo/` | Demo app (Next.js) — landing + dark pool flow |
+| `circuits/solvency_proof/` | Noir ZK circuit — balance ≥ threshold |
+| `docs/` | Reference docs |
 
-**Why it matters:** Selective disclosure - prove what's needed, hide what's not.
+---
 
-### 3. Arcium MPC Encryption
-```typescript
-// Encrypt balance before proving
-const encrypted = await arcium.encrypt({
-  balance: wallet.balance,
-  context: contextPubkey
-});
+## Prerequisites
 
-// Proof uses encrypted value
-const proof = await noir.prove(encrypted, threshold);
-```
+- Solana CLI 2.1.x / 3.x
+- Rust 1.79+ (for Anchor)
+- Node.js 18+
+- npm or yarn
+- [Noir](https://noir-lang.org/docs/getting_started/installation/) (for circuit build; SDK uses pre-built artifacts)
+- [Anchor](https://www.anchor-lang.com/docs/installation) (for program build)
 
-**Why it matters:** End-to-end encryption ensures even proof generation is private.
+---
 
-## 🔐 Arcium MPC Integration
+## SDK
 
-**Prism Protocol is the first stack to combine Arcium MPC encryption with Noir ZK proofs and Solana contexts.**
+If you want to integrate Prism into your project, use the **Prism Protocol SDK**.
 
-### The Arcium-First Approach
-
-Each encrypted balance is **cryptographically bound** to a disposable context identity. The dark pool sees only:
-- A commitment hash (from Arcium)
-- A ZK proof (from Noir)
-- A context address (from Solana)
-
-**The actual balance and root wallet remain completely hidden.**
-
-### Cryptographic Flow
-
-```
-User Wallet ($500K SOL)
-    ↓
-Context PDA Derivation → 9CyUh3VM... (disposable identity)
-    ↓
-Arcium MPC Encryption
-    ├── X25519 key agreement with MXE
-    ├── CSplRescueCipher encryption
-    ├── Commitment: H(balance || contextPubkey || nonce)
-    └── Guarantee: "Only decryptable with this specific context"
-    ↓
-Noir ZK Proof
-    ├── Private: encrypted balance (from Arcium)
-    ├── Public: threshold ($10K)
-    └── Proof: "Balance ≥ threshold" (without revealing)
-    ↓
-Dark Pool Verification
-    ├── Verify ZK proof
-    ├── Check Arcium commitment
-    └── Grant access (balance never revealed, context isolated)
-```
-
-### Why Context Binding Matters
-
-By including the `contextPubkey` in the Arcium commitment, we ensure:
-- **Context Isolation**: Each context has its own encryption
-- **Non-transferability**: A commitment from one context can't be used for another
-- **Binding Guarantee**: The commitment proves the balance was encrypted for THIS specific context
-
-### Technical Details
-
-- **X25519 Key Agreement**: Establishes shared secret with Arcium MXE
-- **CSplRescueCipher**: Arcium's threshold encryption cipher
-- **Commitment Generation**: `H(balance || contextPubkey || nonce)` for verification
-- **MPC Network**: Real Arcium multi-party computation (when configured)
-
-**See [ARCIUM_INTEGRATION_DEEP_DIVE.md](./packages/sdk/src/encryption/ARCIUM_INTEGRATION_DEEP_DIVE.md) for complete technical documentation.**
-
-## 🎯 Use Cases (SDK-Powered)
-
-The **Prism SDK** (`@prism-protocol/sdk`) supports many use cases; the **demo app** showcases dark pool trading.
-
-### Demo: Dark Pool Trading
-1. Connect wallet → Create context → Generate ZK solvency proof → Access pool → Execute trade → Burn context. Main wallet never exposed.
-
-### Other Use Cases (Same SDK)
-- **Anonymous DAO voting** – Vote without revealing token holdings
-- **Wallet drain protection** – Disposable contexts with low limits for unknown sites
-- **Token gating** – Prove “hold ≥ N tokens” without revealing amount
-- **Private DeFi** – Trade without linking to main wallet
-- **Social / professional** – Contexts for different identities and limits
-
-*See [packages/sdk/EXAMPLES.md](./packages/sdk/EXAMPLES.md) for full code examples and [packages/sdk/README.md](./packages/sdk/README.md) for API docs.*
-
-## 🏗️ Technical Stack (MVP)
-
-### Smart Contracts (Solana/Anchor)
-```rust
-// Two core contracts:
-1. Root Identity - Soulbound master identity
-2. Context Manager - Create/revoke contexts with limits
-```
-
-### ZK Proofs (Noir)
-```rust
-// One production circuit:
-solvency_proof.nr - Balance threshold verification
-```
-
-### Encryption (Arcium)
-```typescript
-// MPC encryption for sensitive data:
-- Balance amounts
-- Context metadata
-```
-
-### SDK (@prism-protocol/sdk)
-```typescript
-// Developer interface:
-class PrismProtocol {
-  createRootIdentity()
-  createContext(type, limits)
-  generateSolvencyProof(threshold)
-  revokeContext(pubkey)
-}
-```
-
-### Demo Application
-```
-Dark Pool Trading Simulator
-- Built with Next.js + React
-- Solana wallet integration
-- Real-time proof generation
-- Context lifecycle visualization
-```
-
-## 🛠️ For Developers
-
-### Install & 5-Line Example
-
-Install from npm: **[@prism-protocol/sdk](https://www.npmjs.com/package/@prism-protocol/sdk)**
+**Install**
 
 ```bash
 npm install @prism-protocol/sdk
 # or: yarn add @prism-protocol/sdk
 # or: pnpm add @prism-protocol/sdk
 ```
+
+**5-line example**
 
 ```typescript
 import { PrismProtocol, ContextType } from '@prism-protocol/sdk';
@@ -194,139 +72,86 @@ const proof = await prism.generateSolvencyProof({ actualBalance: 500_000_000n, t
 // Use proof for voting, gating, dark pool access, etc.
 ```
 
-Full API and use-case examples: **[packages/sdk/README.md](./packages/sdk/README.md)** and **[packages/sdk/EXAMPLES.md](./packages/sdk/EXAMPLES.md)**.
+Full API and examples: [packages/sdk/README.md](./packages/sdk/README.md) and [packages/sdk/EXAMPLES.md](./packages/sdk/EXAMPLES.md).
 
-### Why use Prism
-- ✅ **One SDK, many use cases** – Voting, gating, dark pools, wallet protection, and more
-- ✅ **Simple API** – Identity, contexts, proofs, encryption
-- ✅ **Open source** – MIT license
-- ✅ **Composable** – Works with existing Solana apps
+---
 
-## 🏆 Hackathon Strategy
+## Anchor Program
 
-### Target Bounties (Total: $32K)
-
-| Bounty | Prize | Our Angle |
-|--------|-------|-----------|
-| **Privacy Tooling Track** | $15,000 | SDK for privacy-preserving dark pools |
-| **Aztec/Noir** | $7,500 | First Noir-based identity SDK |
-| **Arcium** | $8,000 | End-to-end private DeFi with MPC |
-| **Range** | $1,500 | Selective disclosure proofs |
-
-### Why We Win
-- ✅ **Actually works** - Fully functional, not vaporware
-- ✅ **Novel architecture** - Context-based identities (never seen before)
-- ✅ **Technical depth** - Noir + Arcium + Solana smart contracts
-- ✅ **Real problem** - Whale front-running costs millions in MEV
-- ✅ **One demo, four bounties** - Maximum ROI on time invested
-
-## 🚀 7-Day Build Timeline
-
-| Day | Focus | Deliverable |
-|-----|-------|-------------|
-| **Day 1** | Smart contracts | Deployed to devnet |
-| **Day 2** | Noir circuits | Working solvency proofs |
-| **Day 3** | SDK core | TypeScript SDK functional |
-| **Day 4** | Arcium integration | Encrypted balance proofs |
-| **Day 5** | Demo app | Dark pool simulator |
-| **Day 6** | Polish & docs | Submission-ready |
-| **Day 7** | Video & submit | Submitted to all bounties |
-
-**See [WINNING_STRATEGY.md](./WINNING_STRATEGY.md) for detailed execution plan.**
-
-## 🔧 Development Setup
+Navigate to the program directory:
 
 ```bash
-# Clone repository
-git clone https://github.com/yourusername/prism-protocol
-cd prism-protocol
-
-# Install dependencies
-npm install
-
-# Build Solana programs
 cd prism
-anchor build
-anchor test
-
-# Install Noir
-curl -L https://noir-lang.org/install | bash
-noirup
-
-# Run demo
-npm run dev
 ```
 
-## 🎥 Demo
+**Build the program**
 
-**Coming soon:** Live demo and 3-minute video (Feb 1, 2026)
+```bash
+anchor build
+```
 
-## 📚 Documentation
+**Run tests**
 
-### Root (start here)
-- **[README.md](./README.md)** - This file
-- **[WINNING_STRATEGY.md](./WINNING_STRATEGY.md)** ⭐ - Hackathon execution plan
-- **[HACKATHON_GAP_ANALYSIS.md](./HACKATHON_GAP_ANALYSIS.md)** - Submission checklist & gaps
-- [CHANGELOG.md](./CHANGELOG.md) - Project history
+```bash
+anchor test
+# or from repo root: cargo test in prism/programs/prism
+```
 
-### [docs/](./docs/) – Reference (keep)
-- [TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md](./docs/TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md) - What we do and don't claim
-- [ARCIUM_CRYPTOGRAPHIC_FLOW.md](./docs/ARCIUM_CRYPTOGRAPHIC_FLOW.md) - Arcium + ZK flow
-- [UNDER_THE_HOOD_EXPLANATION.md](./docs/UNDER_THE_HOOD_EXPLANATION.md) - Step-by-step execution
-- [DEMO_SCRIPT.md](./docs/DEMO_SCRIPT.md) - 3-minute demo script
-- [ARCHITECTURE_EXPLAINED.md](./docs/ARCHITECTURE_EXPLAINED.md), [ERROR_HANDLING.md](./docs/ERROR_HANDLING.md), [UPDATE_ENV.md](./docs/UPDATE_ENV.md), [ARCIUM_READY.md](./docs/ARCIUM_READY.md), and other setup/reference docs
+**Deploy to devnet**
 
-### [ideation/](./ideation/) – Planning (can delete later)
-- PRD, ARCHITECTURE, USE_CASES, HACKATHON_ROADMAP, MASTER_CHECKLIST, WOW_FACTOR_STRATEGY, SDK_PRODUCTION_PLAN, etc.
+Program ID (devnet): `DkD3vtS6K8dJFnGmm9X9CphNDU5LYTYyP8Ve5EEVENdu`
 
-### Code
-- [Anchor program](./prism/) - Solana program source
-- [SDK](./packages/sdk/) - [packages/sdk/README.md](./packages/sdk/README.md), API.md, EXAMPLES.md
+```bash
+anchor build
+anchor deploy --provider.cluster devnet
+```
 
-## 🎯 Project Philosophy
+(Use your own keypair and cluster config as needed; see `prism/Anchor.toml`.)
 
-**"One feature, fully working, maximum prizes."**
+---
 
-We're building ONE killer demo that:
-- Actually works (deployed and functional)
-- Solves a real problem (whale front-running)
-- Demonstrates technical mastery (Noir + Arcium + Solana)
-- Targets multiple bounties ($32K potential)
+## Run the Demo
 
-Not building:
-- ❌ 8 half-finished features
-- ❌ Vaporware architecture diagrams
-- ❌ Concept demos without real code
+```bash
+# From repo root
+npm install
+npm run dev
+# Demo app: http://localhost:3000
+# Dark pool flow: http://localhost:3000/demo
+```
 
-We've learned: **Judges reward what works, not what's promised.**
+Or use the deployed demo: **[Try the Dark Pool Demo](https://prism-protocol-demo.vercel.app/demo)**.
 
-## 🔒 Transparency: What We Do and Don't Claim
+---
+
+## Documentation
+
+| Doc | Description |
+|-----|-------------|
+| [docs/README.md](./docs/README.md) | Docs homepage |
+| [TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md](./docs/TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md) | What we do and don't claim (privacy, signer visibility) |
+| [DARK_POOLS_AND_SOLANA.md](./docs/DARK_POOLS_AND_SOLANA.md) | Why dark pools matter on Solana and what Prism solves |
+| [ARCIUM_CRYPTOGRAPHIC_FLOW.md](./docs/ARCIUM_CRYPTOGRAPHIC_FLOW.md) | Arcium + ZK flow |
+| [packages/sdk/README.md](./packages/sdk/README.md) | SDK API |
+
+---
+
+## Transparency: What We Do and Don't Claim
 
 **What this SDK provides:** Context-based identities (one address per use case), ZK solvency proofs (prove balance ≥ threshold without revealing amount), Arcium encryption binding balances to contexts, and spending limits / revocable contexts. **Application-level isolation** so dApps see a context PDA, not your main wallet.
 
-**What we do not provide:** Signer anonymity. On Solana, the fee-payer wallet is always visible on every transaction. Root and context PDAs are derivable from the signer, so an on-chain analyst can link contexts to the same wallet. We do not break that link.
-
-*Full technical explanation: [docs/TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md](./docs/TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md)*
-
-## 📄 License
-
-MIT License - Open source for the Solana ecosystem
+**What we do not provide:** Signer anonymity. On Solana, the fee-payer wallet is always visible on every transaction. Root and context PDAs are derivable from the signer. We do not break that link. See [TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md](./docs/TECHNICAL_WHAT_THE_SDK_ACTUALLY_DOES.md).
 
 ---
 
-**Built for Solana Privacy Hackathon 2026**  
-*Privacy infrastructure that actually works*
+## License
+
+MIT License — open source for the Solana ecosystem.
 
 ---
 
-## 🙏 Acknowledgments
+## Acknowledgments
 
-Built with:
-- [Aztec Noir](https://noir-lang.org) - ZK circuit language
-- [Arcium](https://arcium.com) - MPC encryption
-- [Anchor](https://www.anchor-lang.com) - Solana framework
-- [Solana](https://solana.com) - High-performance blockchain
+Built with [Aztec Noir](https://noir-lang.org), [Arcium](https://arcium.com), [Anchor](https://www.anchor-lang.com), and [Solana](https://solana.com).
 
----
-
-**Questions?** Open an issue or check the ideation docs.
+**Built for Solana Privacy Hackathon 2026**

@@ -1,5 +1,7 @@
 # Prism Protocol Architecture Explained
 
+Like light through a prism refracts into many colors, **one identity refracts into many context-bound addresses**. The architecture below is how we implement that: a signing wallet (you), a root identity (master PDA), and context identities (disposable PDAs)—each context a separate "color," isolated and revocable.
+
 ## The Three Layers
 
 ### 1. **Signing Wallet (Your Phantom Wallet)**

@@ -11,7 +11,7 @@
 **From:** Build everything (8+ features, multiple use cases)  
 **To:** Build ONE feature perfectly (dark pool trading with ZK proofs)
 
-**Goal:** Maximize prize money ($32K target across 4 bounties)
+**Goal:** Maximize prize money ($40K target across 4 bounties)
 
 ---
 
@@ -72,15 +72,15 @@ All original planning documents moved here for safekeeping:
 
 ## Bounty Strategy
 
-### Primary Target: Privacy Tooling ($15K)
-**Submission:** Privacy SDK for dark pool access
+### Primary Target: Privacy Infra ($15K)
+**Submission:** Privacy infrastructure & SDK for dark pool access
 
 ### Secondary Targets
-- **Aztec/Noir** ($7.5K) - First Noir-based identity SDK
-- **Arcium** ($8K) - End-to-end private DeFi
-- **Range** ($1.5K) - Selective disclosure
+- **Arcium** ($10K) - End-to-end private DeFi with MPC
+- **ZK Noir / Aztec** ($10K) - First Noir-based identity SDK on Solana
+- **Helius** ($5K) - RPC & infra for private Solana apps
 
-**Total Potential:** $32,000
+**Total Potential:** $40,000
 
 ---
 

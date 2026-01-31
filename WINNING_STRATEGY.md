@@ -1,7 +1,7 @@
 # Winning Strategy: Prism Protocol MVP
 **Goal:** Maximize prize money with ONE fully working feature  
 **Timeline:** 7 days (Jan 20-26, 2026)  
-**Target Prizes:** $32,000+ across 4 bounties  
+**Target Prizes:** $40,000 across 4 bounties  
 
 ---
 
@@ -39,11 +39,11 @@
 
 | Bounty | Prize | Why We Win | Effort |
 |--------|-------|------------|--------|
-| **Privacy Tooling Track** | $15,000 | SDK for privacy-preserving dark pool access | Core project |
-| **Aztec/Noir** | $7,500 | First Noir-based identity SDK + creative approach | +4 hours |
-| **Arcium** | $8,000 | End-to-end private DeFi with MPC encryption | +2 hours |
-| **Range** | $1,500 | Selective disclosure (our solvency proof) | Free (already built) |
-| **TOTAL** | **$32,000** | Four bounties, ONE demo | 46 hours |
+| **Privacy Infra** | $15,000 | Privacy infrastructure & SDK track | Core project |
+| **Arcium** | $10,000 | End-to-end private DeFi with MPC encryption | Core project |
+| **ZK Noir / Aztec** | $10,000 | First Noir-based identity SDK on Solana | Core project |
+| **Helius** | $5,000 | RPC & infra for private Solana apps | Core project |
+| **TOTAL** | **$40,000** | Four bounties, ONE demo | — |
 
 ---
 
@@ -116,7 +116,7 @@ const proof = await noir.generateProof({
 ```
 
 **Time investment:** 2 hours  
-**Bounty unlock:** $8,000  
+**Bounty unlock:** $10,000  
 **ROI:** $4,000/hour 🚀
 
 ---
@@ -315,7 +315,7 @@ Dark Pool Trading Simulator
 
 ---
 
-### Aztec/Noir Bounty ($7,500)
+### ZK Noir / Aztec Bounty ($10,000)
 **Target categories:**
 - Best Overall ($5K)
 - Most Creative ($2.5K)
@@ -331,7 +331,7 @@ Dark Pool Trading Simulator
 
 ---
 
-### Arcium Bounty ($8,000)
+### Arcium Bounty ($10,000)
 **Target categories:**
 - Best Overall ($5K)
 - Integration ($3K)
@@ -347,7 +347,7 @@ Dark Pool Trading Simulator
 
 ---
 
-### Range Bounty ($1,500)
+### Helius Bounty ($5,000)
 **Headline:** "ZK Solvency Proofs with Selective Disclosure"  
 **Pitch:** Prove balance thresholds without revealing exact amounts. Compliant privacy for financial applications.
 

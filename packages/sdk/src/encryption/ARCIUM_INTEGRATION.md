@@ -2,7 +2,7 @@
 
 **Status:** ✅ COMPLETE  
 **Date:** January 2026  
-**Bounty Target:** $8,000 Arcium bounty
+**Bounty Target:** $10,000 Arcium bounty
 
 ---
 
@@ -201,7 +201,7 @@ Dark Pool Verification
 
 ## 🎯 Bounty Alignment
 
-This integration targets the **$8,000 Arcium bounty** by:
+This integration targets the **$10,000 Arcium bounty** by:
 
 1. ✅ **Real Arcium Integration**
    - Uses `@arcium-hq/client` SDK

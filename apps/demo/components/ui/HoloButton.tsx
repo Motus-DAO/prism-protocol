@@ -3,7 +3,7 @@ import clsx from "clsx";
 
 interface HoloButtonProps {
   children: React.ReactNode;
-  variant?: "primary" | "secondary" | "ghost" | "success" | "danger";
+  variant?: "primary" | "secondary" | "ghost" | "success" | "danger" | "prism" | "prismOutline";
   size?: "sm" | "md" | "lg";
   disabled?: boolean;
   loading?: boolean;
@@ -29,7 +29,9 @@ export const HoloButton: React.FC<HoloButtonProps> = ({
     secondary: "bg-gradient-to-r from-fuchsia-500/20 to-cyan-500/20 border border-fuchsia-400/30 text-fuchsia-300 hover:from-fuchsia-500/30 hover:to-cyan-500/30 hover:border-fuchsia-400/50 hover:shadow-[0_0_20px_rgba(255,0,255,0.3)]",
     ghost: "bg-transparent border border-white/20 text-white/80 hover:bg-white/5 hover:border-white/40 hover:text-white",
     success: "bg-gradient-to-r from-green-500/20 to-cyan-500/20 border border-green-400/30 text-green-300 hover:from-green-500/30 hover:to-cyan-500/30 hover:border-green-400/50 hover:shadow-[0_0_20px_rgba(0,255,0,0.3)]",
-    danger: "bg-gradient-to-r from-red-500/20 to-fuchsia-500/20 border border-red-400/30 text-red-300 hover:from-red-500/30 hover:to-fuchsia-500/30 hover:border-red-400/50 hover:shadow-[0_0_20px_rgba(255,0,0,0.3)]"
+    danger: "bg-gradient-to-r from-red-500/20 to-fuchsia-500/20 border border-red-400/30 text-red-300 hover:from-red-500/30 hover:to-fuchsia-500/30 hover:border-red-400/50 hover:shadow-[0_0_20px_rgba(255,0,0,0.3)]",
+    prism: "bg-gradient-to-r from-prism-cyan/20 to-prism-violet/20 border border-prism-cyan/30 text-prism-cyan hover:from-prism-cyan/30 hover:to-prism-violet/30 hover:border-prism-cyan/50 hover:shadow-[0_0_20px_rgba(0,255,204,0.35)]",
+    prismOutline: "bg-transparent border-2 border-prism-cyan/40 text-prism-cyan hover:bg-prism-cyan/10 hover:border-prism-cyan/60 hover:shadow-[0_0_20px_rgba(0,255,204,0.25)]"
   };
 
   const sizeClasses = {
@@ -71,7 +73,12 @@ export const HoloButton: React.FC<HoloButtonProps> = ({
       </span>
 
       {/* Glow effect overlay */}
-      <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-cyan-400/10 to-fuchsia-500/10 opacity-0 hover:opacity-100 transition-opacity duration-300" />
+      <div className={clsx(
+        "absolute inset-0 rounded-xl opacity-0 hover:opacity-100 transition-opacity duration-300",
+        (variant === "prism" || variant === "prismOutline")
+          ? "bg-gradient-to-r from-prism-cyan/10 to-prism-violet/10"
+          : "bg-gradient-to-r from-cyan-400/10 to-fuchsia-500/10"
+      )} />
     </button>
   );
 };

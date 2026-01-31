@@ -3,18 +3,23 @@
 
 **Target Time**: 3 minutes  
 **Format**: Live demo with voiceover  
-**Audience**: Hackathon judges (technical)  
+**Audience**: Hackathon judges (technical)
 
-🎯 How to Position Prism Protocol
-Tagline Options:
-"Privacy Infrastructure for Dark Pools & Private Trading"
-Emphasizes dark pool relevance
-"Context-Based Identity Layer for Privacy-Preserving DeFi"
-Emphasizes infrastructure
-"The Missing Identity Layer for Private Solana Applications"
-Positions as foundational infrastructure
-Pitch Framework:
-Hook: "Dark pools need privacy, but privacy needs identity verification. Current solutions force a choice between anonymity and trust. Prism Protocol solves this."
+**Current live demo**: Dark pool at **[/demo](https://prism-protocol-demo.vercel.app/demo)** — connect wallet → create context → generate ZK solvency proof → encrypted proof → burn context. Working end-to-end. The script below also describes optional flows (voting, security) for future expansion.
+
+---
+
+### How to Position Prism Protocol
+
+**The Prism concept:** Like light through a prism refracts into many colors, **one identity refracts into many context-bound personas**. Each context is a separate "color"—isolated, provable, revocable.
+
+**Tagline options:**
+- "Your wallet's invisible shield. Solana's first privacy SDK." — Matches landing; emphasizes privacy.
+- "Privacy infrastructure for dark pools & private trading." — Emphasizes dark pool relevance.
+- "Context-based privacy that actually works." — Emphasizes solution.
+
+**Pitch framework:**  
+Hook: "Every Solana transaction exposes your entire financial life. Whales get front-run. DAOs can't offer anonymous voting. We built Prism—your wallet's invisible shield. One identity refracts into many contexts; prove what's needed, hide the rest."
 
 
 ---
@@ -286,7 +291,7 @@ Screen shows:
 - Rehearsed demos (no live transactions)
 
 ### Pre-Recording Checklist
-- [ ] All demos working and tested
+- [x] Primary demo (dark pool at /demo) working and tested
 - [ ] Script memorized or available
 - [ ] Recording software configured (1080p, 30fps)
 - [ ] Browser tabs prepared

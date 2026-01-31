@@ -1,7 +1,12 @@
 export { HoloPanel } from './HoloPanel';
 export { HoloButton } from './HoloButton';
+export { HoloLink } from './HoloLink';
 export { HoloText } from './HoloText';
 export { Toast, ToastContainer } from './Toast';
 export type { ToastType } from './Toast';
 export { SuccessAnimation } from './SuccessAnimation';
 export { LoadingSkeleton, StepSkeleton, TerminalSkeleton } from './LoadingSkeleton';
+export { Prism } from './Prism';
+export type { PrismProps } from './Prism';
+export { ColorBends } from './ColorBends';
+export type { ColorBendsProps } from './ColorBends';
