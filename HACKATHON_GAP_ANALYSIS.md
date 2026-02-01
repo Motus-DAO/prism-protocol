@@ -2,17 +2,20 @@
 **Solana Privacy Hackathon 2026 | Deep analysis for a winning submission**
 
 **Date:** January 30, 2026  
+**Last updated:** February 1, 2026  
 **Submission deadline:** February 1, 2026  
 **Winners announced:** February 10, 2026  
 **Sign-up / submit:** [solana.com/privacyhack](https://solana.com/privacyhack)
+
+**Verification (Feb 1, 2026):** Demo reliability items below have been **addressed**. The dark pool demo now: (1) disables the action button while a transaction is in-flight (`loading` + `disabled` on HoloButton), (2) shows each tx signature with a clickable Solana Explorer link (devnet), and (3) treats “context already exists” and “already revoked” as friendly states (info messages, flow continues to complete). SDK and `usePrismProgram` return `signature: 'existing'` / `'already_revoked'` instead of throwing; demo and tests verified.
 
 ---
 
 ## Executive Summary
 
-**Current state:** Core tech is strong (Noir ZK + Arcium MPC + Solana contexts + dark pool demo). The main gaps are **submission logistics**, **demo reliability**, and **bounty-specific packaging** — not the core product.
+**Current state:** Core tech is strong (Noir ZK + Arcium MPC + Solana contexts + dark pool demo). Demo reliability (tx in-flight, Explorer links, “already exists/revoked” friendly) has been **addressed (Feb 2026)**. Remaining gaps are **submission logistics** and **bounty-specific packaging** — not the core product.
 
-**Priority:** Fix transaction reliability → Record & submit video → Deploy live demo → Draft bounty-specific pitches. Optional: second micro-demo and narrative polish.
+**Priority:** Record & submit video → Deploy live demo → Draft bounty-specific pitches. Optional: second micro-demo and narrative polish.
 
 ---
 
@@ -49,14 +52,14 @@
 
 **Risk:** No submission = no judging. No video = judges can’t see the flow.
 
-### 2.2 Demo Reliability 🔴
-| Issue | Location | Fix |
-|-------|----------|-----|
-| **“This transaction has already been processed”** | Demo: create/revoke context | Deduplicate: track pending tx (e.g. by signature or step), don’t re-send same action; show “Processing…” and disable button until done. |
-| **Revoke fails when context missing** | `usePrismProgram` / SDK | Handle “no prior credit” / missing context: treat as already revoked or show clear message; avoid throwing in UI. |
-| **Duplicate calls (e.g. React strict mode)** | `usePrismProgram.ts` | Guard with refs or “inFlight” flags so create/revoke/initialize run once per user action. |
+### 2.2 Demo Reliability ✅ Addressed (Feb 2026)
+| Issue | Location | Status |
+|-------|----------|--------|
+| **“This transaction has already been processed”** | Demo + SDK | **Done.** SDK returns `signature: 'existing'` for create when context exists; demo shows friendly message and proceeds. Create/revoke use single user click; button disabled while tx in-flight. |
+| **Revoke fails when context missing** | `usePrismProgram` / SDK / Demo | **Done.** SDK returns `signature: 'already_revoked'` when context already revoked; demo pre-checks context state and shows “Context was already revoked (from previous run)” and advances to complete. No raw RPC errors in UI. |
+| **Duplicate calls (e.g. React strict mode)** | Demo flow | **Done.** One primary CTA per step; `isProcessing` / `prism.isLoading` disable button; no double-submit from strict mode in dark pool flow. |
 
-**Risk:** Judges hit “already processed” or revoke errors and assume the demo is broken.
+**Note:** Judges will see “Processing…” / “Creating on-chain…” / “Burning on-chain…” with spinner, then tx signature + Explorer link. “Already exists” / “Already revoked” are shown as informational and the flow completes successfully.
 
 ### 2.3 Live Demo URL 🟠
 | Item | Status | Action |
@@ -98,10 +101,10 @@ Judges see many projects. Short, bounty-specific text increases clarity.
 - **Benefit:** Shows “one SDK, many use cases” and composability.
 - **Effort:** ~2–4 hours (minimal UI + same `generateSolvencyProof`).
 
-### 4.2 Transaction UX in Demo
-- Disable “Create context” / “Revoke” while tx in flight.
-- Show “Transaction sent: &lt;explorer link&gt;” and wait for confirmation before next step.
-- Clear error messages: “Context already exists” / “Already revoked” instead of raw RPC errors.
+### 4.2 Transaction UX in Demo ✅ Done
+- **Disabled during tx:** “Create context” / “Revoke” (and all step actions) are disabled via `loading` + `disabled` on the main HoloButton while `isProcessing` or `prism.isLoading`.
+- **Tx signature + Explorer:** Each successful on-chain tx is stored and shown in a “Transactions” section with clickable links to `explorer.solana.com/tx/…?cluster=devnet`.
+- **Friendly states:** “Context already exists” and “Already revoked” are shown as info (not errors); flow continues to “Privacy preserved” / complete.
 
 ### 4.3 Narrative Polish (Arcium / Noir)
 - README already has Arcium flow; optional: one diagram (e.g. “Wallet → Context → Arcium encrypt → Noir prove → Pool”).
@@ -121,7 +124,7 @@ Judges see many projects. Short, bounty-specific text increases clarity.
 ## 6. Checklist: From Now to Winning Submission
 
 ### Before Feb 1 (Critical)
-- [ ] **Fix demo tx reliability:** Deduplicate create/revoke, handle “already processed” and “already revoked” in UI.
+- [x] **Fix demo tx reliability:** Deduplicate create/revoke, handle “already processed” and “already revoked” in UI. *(Done Feb 2026 — see §2.2 and §4.2.)*
 - [ ] **Record 3-minute video:** Hook → dark pool demo → impact + CTA; use DEMO_SCRIPT.md.
 - [ ] **Upload video** (e.g. YouTube); get public/unlisted link.
 - [ ] **Deploy demo** (e.g. Vercel); get stable URL.
@@ -135,7 +138,7 @@ Judges see many projects. Short, bounty-specific text increases clarity.
 ### Optional
 - [ ] Second micro-demo (e.g. token gating/voting).
 - [ ] One architecture diagram (Arcium + Noir + Solana).
-- [ ] Clearer error messages and loading states in demo.
+- [x] Clearer error messages and loading states in demo. *(Done: “already exists” / “already revoked” friendly; loading spinner + disabled button.)*
 
 ---
 
@@ -157,7 +160,7 @@ Use these when writing submission text and script:
 | Risk | Mitigation |
 |------|-------------|
 | Miss submission deadline | Submit early (e.g. Jan 31); video can be “final cut” later if rules allow updates. |
-| Demo breaks for judges | Fix tx deduplication and revoke handling; test on a fresh wallet; provide live link. |
+| Demo breaks for judges | Tx deduplication and revoke handling implemented; button disabled in-flight; tx + Explorer link; “already exists/revoked” friendly. Test on fresh wallet; provide live link. |
 | Judges don’t see Arcium/Noir | README + video explicitly say “Arcium encrypts balance,” “Noir proves threshold”; optional diagram. |
 | One demo feels thin | Emphasize “one feature, fully working” and “same SDK for voting, gating, dark pools” in text. |
 
@@ -166,11 +169,12 @@ Use these when writing submission text and script:
 ## 9. Conclusion
 
 - **Technical core:** Strong and bounty-aligned (Noir, Arcium, contexts, SDK, dark pool).
-- **Missing for a winning submission:** Reliable demo UX, 3-minute video, live demo URL, and actual submission with bounty-specific framing.
-- **Rough effort:** 1–2 hours (tx fixes) + 2–3 hours (video + deploy) + 1 hour (submission + README) = **~4–6 hours** to be submission-ready.
+- **Demo reliability:** Addressed (Feb 2026): buttons disabled in-flight, tx signature + Explorer link, “already exists” / “already revoked” as friendly states.
+- **Still needed for submission:** 3-minute video, live demo URL, and actual submission with bounty-specific framing.
+- **Rough effort:** 2–3 hours (video + deploy) + 1 hour (submission + README) = **~3–4 hours** to be submission-ready.
 
-**Next immediate step:** Fix create/revoke transaction handling in the demo, then record the video and deploy.
+**Next immediate step:** Record the 3-minute video, deploy the demo, and submit at solana.com/privacyhack.
 
 ---
 
-*Last updated: January 30, 2026*
+*Last updated: February 1, 2026*
