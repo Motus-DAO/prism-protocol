@@ -8,9 +8,10 @@ export function LandingNav() {
       <div className="max-w-[1400px] mx-auto flex justify-between items-center">
         <Link
           href="/"
-          className="font-landing-display text-xl font-bold tracking-tight uppercase bg-gradient-to-r from-prism-cyan to-prism-violet bg-clip-text text-transparent"
+          className="flex items-baseline gap-2 font-landing-display text-xl font-bold tracking-tight uppercase bg-gradient-to-r from-prism-cyan to-prism-violet bg-clip-text text-transparent"
         >
-          PRISM_PROTOCOL
+          <span>PRISM_PROTOCOL</span>
+          <span className="text-xs font-normal normal-case text-ghost/70 tracking-normal">by MotusDAO</span>
         </Link>
         <nav>
           <ul className="flex flex-wrap items-center gap-8 list-none">
